@@ -68,7 +68,7 @@ class LineTrajectory:
             return (1.0 - t) * self.distances[i] + t * self.distances[i + 1]
 
     def addPoint(self, point: Tuple[float, float]) -> None:
-        print("adding point to trajectory:", point)
+        #print("adding point to trajectory:", point)
         self.points.append(point)
         self.update_distances()
         self.mark_dirty()
@@ -184,7 +184,7 @@ class LineTrajectory:
             else:
                 # delete marker
                 marker.action = 2
-
+            self.node.get_logger().info("publishing end point")
             self.end_pub.publish(marker)
         elif self.end_pub.get_subscription_count() == 0:
             print("Not publishing end point, no subscribers")

@@ -29,8 +29,6 @@ class PathPlan(Node):
         self.map = None
         self.start_pose = None
         self.end_pose = None
-        self.rows = None
-        self.cols = None
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -70,9 +68,9 @@ class PathPlan(Node):
         None
         """
 
-        self.cols = msg.info.width
-        self.rows = msg.info.height
-        self.map = np.array(msg.data).reshape((self.rows, self.cols))
+        cols = msg.info.width
+        rows = msg.info.height
+        self.map = np.array(msg.data).reshape((rows, cols))
         
         # what is origin used for
         self.origin = msg.info.origin
@@ -89,7 +87,7 @@ class PathPlan(Node):
 
         self.start_pose = pose
         self.get_logger().info("got initial pose")
-        self.get_logger().info(f'{self.end_pose} {self.map}')
+        # self.get_logger().info(f'{self.end_pose} {self.map}')
         if self.end_pose is not None and self.map is not None:
             self.trajectory.clear()
             self.plan_path(self.start_pose, self.end_pose, self.map)
@@ -104,7 +102,7 @@ class PathPlan(Node):
         """
         self.end_pose = msg
         self.get_logger().info("got goal pose")
-        self.get_logger().info(f'{self.start_pose} {self.map}')
+        # self.get_logger().info(f'{self.start_pose} {self.map}')
         if self.start_pose is not None and self.map is not None:
             self.trajectory.clear()
             self.plan_path(self.start_pose, self.end_pose, self.map)
@@ -136,7 +134,8 @@ class PathPlan(Node):
 
         # im not sure if this is legal if queue is a heap
         while queue:
-            self.get_logger().info(f'first element in queue: {queue[0]}')
+            # self.get_logger().info(f'first element in queue: {queue[0]}')
+            # self.get_logger().info(f'going through queue')
             current_score, current_node = heapq.heappop(queue)
 
             # if this is the last node then reconstruct the path
@@ -189,7 +188,7 @@ class PathPlan(Node):
         x_new = x_temp + x_offset
         y_new = y_temp +y_offset
 
-        return (int(x_new), int(y_new))
+        return int(x_new), int(y_new)
 
     def transform_wtm(self, x, y):
         """
@@ -212,7 +211,7 @@ class PathPlan(Node):
         new_y/=resolution
         
         # changed this to be ints
-        return (int(new_x), int(new_y))
+        return int(new_x), int(new_y)
 
     def get_neighbors(self, cell):
         '''
@@ -264,7 +263,8 @@ class PathPlan(Node):
             self.get_logger().info("path planned woohoo")
             for coords in path:
                 # made the coords floats cuz it was complaining
-                self.trajectory.addPoint(float(coords))         
+                coords = (float(coords[0]), float(coords[1]))
+                self.trajectory.addPoint(coords)         
                 self.traj_pub.publish(self.trajectory.toPoseArray())
                 self.trajectory.publish_viz()
         else:

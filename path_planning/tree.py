@@ -1,12 +1,17 @@
 
 import numpy as np
+import dubins
+import random
 
+turning_rad = 0.848
+resolution = 0.0504
 
 #TODO fix pose stuff, honestly just rewrite the class and functions so all of them just use the Pose class in TreeNode
 class TreeNode:
-    def __init__(self, x, y, parent=None,cost=0.0):
+    def __init__(self, x, y,theta, parent=None,cost=0.0):
         self.x = x
         self.y = y
+        self.theta = theta
         self.parent  = parent
         self.cost = cost
 
@@ -15,6 +20,24 @@ class TreeNode:
 
     def update_parent(self,new_parent):
         self.parent = new_parent
+
+def cost_func(p1,p2,turning_radius=turning_rad/resolution):
+    """
+    Calculates cost for path between two points
+    p1 - starting TreeNode
+    p2 - ending TreeNode
+    """
+    
+    # # Get the shortest Dubins path
+    # path = dubins.shortest_path((p1.x, p1.y, p1.theta), 
+    #                             (p2.x, p2.y, p2.theta), 
+    #                             turning_radius)
+    
+    # # Return the length of the path
+    # return path.path_length()
+    return euclidean_distance(p1,p2)
+
+
 
 def euclidean_distance(p1,p2):
     """
@@ -33,20 +56,33 @@ def get_random_point(map):
     map-2D np array
     returns: TreeNode
     """
-    height, width = map.shape
-    valid_point = False
-    occupied = 0.65 #threshold from map_params
-    free = 0.196
+    # height, width = map.shape
+    # valid_point = False
+    # occupied = 0.65 #threshold from map_params
+    # free = 0.196
+    # # while not valid_point:
+    # #     # Generate random x and y coordinates within the map
+    # #     x = np.random.randint(0, width)
+    # #     y = np.random.randint(0, height)
+    # #     if map[y,x] <occupied and map[y,x] > free:
+    # #         valid_point =True
     # while not valid_point:
-    #     # Generate random x and y coordinates within the map
     #     x = np.random.randint(0, width)
     #     y = np.random.randint(0, height)
-    #     if map[y,x] <occupied and map[y,x] > free:
-    #         valid_point =True
-    x = np.random.randint(0, width)
-    y = np.random.randint(0, height)
+    #     if map[y,x] ==0:
+    #         valid_point = True
+    
+    # #just a random orientation
+    # print(map)
+    # print(np.array(map))
+    theta = np.random.uniform(0, 2*np.pi)
+    point = random.choice(map)
 
-    return TreeNode(float(x),float(y))
+    x=point[1] #column or x value
+    y=point[0] #row or y value
+
+
+    return TreeNode(float(x),float(y),theta)
 
 
 def get_nearest_point( tree, point):
@@ -59,12 +95,12 @@ def get_nearest_point( tree, point):
 
     """
     
-    distances = [euclidean_distance(point, n) for n in tree]
+    distances = [cost_func(point, n) for n in tree]
     nearest_index = np.argmin(distances)
     return tree[nearest_index]
     
 
-def new_state( q_nearest, q_rand, step_size):
+def new_state( q_nearest, q_rand, step_size,turning_radius=turning_rad/resolution):
     """ 
     Create a new point in the direction of p2 from p1 with distance delta
     params:
@@ -73,14 +109,26 @@ def new_state( q_nearest, q_rand, step_size):
     step_size - float
     returns: TreeNode
     """
-    distance = euclidean_distance(q_nearest, q_rand)
-    if distance <= step_size:
-        return q_rand
+    # distance = euclidean_distance(q_nearest, q_rand)
+    # if distance <= step_size:
+    #     return q_rand
+    # else:
+    #     direction = np.array([q_rand.x,q_rand.y]) - np.array([q_nearest.x,q_nearest.y])
+    #     direction /= distance
+    #     new_point = np.array([q_nearest.x,q_nearest.y]) + direction * step_size
+    #     return TreeNode(new_point[0],new_point[1])
+    
+    path = dubins.shortest_path((q_nearest.x, q_nearest.y, q_nearest.theta), 
+                                (q_rand.x, q_rand.y, q_rand.theta), 
+                                turning_radius)
+    new_points, _ = path.sample_many(step_size)
+    #print(f"x:{q_nearest.x == new_points[0][0]}, y:{q_nearest.y == new_points[0][1]}, theta:{q_nearest.theta == new_points[0][2]}, ")
+    #in case of short path
+    if len(new_points) >=2:
+        point = new_points[1] 
     else:
-        direction = np.array([q_rand.x,q_rand.y]) - np.array([q_nearest.x,q_nearest.y])
-        direction /= distance
-        new_point = np.array([q_nearest.x,q_nearest.y]) + direction * step_size
-        return TreeNode(new_point[0],new_point[1])
+        point = (q_rand.x,q_rand.y,q_rand.theta)
+    return TreeNode(*point)
     
 
 def is_collision_free( p1, p2, map):
@@ -88,9 +136,12 @@ def is_collision_free( p1, p2, map):
 
     # Convert the poses to grid coordinates
     x2, y2 = int(p2.x), int(p2.y)
+    turning_radius = turning_rad/resolution #turning radius divided by resolution
+    configs , _ = dubins.shortest_path((p1.x,p1.y,p1.theta),(p2.x,p2.y,p2.theta),turning_radius).sample_many(.25/.0504)
+    # If the target cell is occupied (probability > 0.65), return True,
+    configs.append((x2,y2))
 
-    # If the target cell is occupied (probability > 0.65), return True
-    if map[y2, x2] !=0:
+    if any([map[int(point[1]), int(point[0])] !=0 for point in configs ]):
         return False
 
     # If the target cell is not occupied, return False
@@ -103,7 +154,7 @@ def rewire( tree, q_new, near_nodes, step_size,map):
     for near_node in near_nodes:
         if near_node == q_new.parent:
             continue
-        new_cost = near_node.cost + euclidean_distance(near_node, q_new)
+        new_cost = near_node.cost + cost_func(near_node, q_new)
         if new_cost < q_new.cost and is_collision_free(near_node, q_new, map):
             q_new.update_parent(near_node)
             q_new.update_cost(new_cost)
@@ -122,7 +173,7 @@ def update_children_costs(tree,parent, step_size, map):
 
     for node in tree:
         if node.parent == parent:
-            new_cost = parent.cost + euclidean_distance(parent, node)
+            new_cost = parent.cost + cost_func(parent, node)
             if new_cost < node.cost and is_collision_free(parent, node, map):
                 node.parent = parent
                 node.cost = new_cost
@@ -135,7 +186,7 @@ def create_path( end_point):
     node = end_point
     #get path in reverse order
     while node is not None:
-                transform_mtw(node.x, node.y)
+                
                 path.append(transform_mtw(node.x, node.y))
                 node = node.parent
 
@@ -144,7 +195,7 @@ def create_path( end_point):
     
 
 
-def transform_wtm(x,y):
+def transform_wtm(x,y,theta):
     """
     Takes in x,y coordinates from world and transforms them to map scale
     """
@@ -164,7 +215,10 @@ def transform_wtm(x,y):
     new_x/=resolution
     new_y/=resolution
 
-    return new_x,new_y
+    # adjust theta with the offset and wrap it within the range [0, 2*pi)
+    new_theta = np.mod((theta - theta_offset + np.pi), 2 * np.pi) - np.pi
+
+    return new_x,new_y,new_theta
 
 
 def transform_mtw(x,y):

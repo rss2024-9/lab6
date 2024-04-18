@@ -7,6 +7,8 @@ from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
 from .tree import *
 import numpy as np
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
+import cv2
 
 
 class PathPlan(Node):
@@ -26,6 +28,7 @@ class PathPlan(Node):
 
 
         self.map_data = None #to be populated with 2D np array
+        self.free_space =None
         self.origin = None #Pose msg to draw position and orientation from
         self.start_pose = None
         self.goal_pose = None
@@ -71,7 +74,15 @@ class PathPlan(Node):
 
         width = msg.info.width
         height = msg.info.height
-        self.map_data = erode_map(np.array(msg.data).reshape(height,width),.5/.0504)
+        self.map_data = erode_map(np.array(msg.data).reshape(height,width),.25/.0504)
+
+        zero_indices = np.where(self.map_data == 0)
+
+        # Convert the indices to a list of tuples
+        zero_indices_list = list(zip(zero_indices[0], zero_indices[1]))
+        self.free_space = zero_indices_list
+
+
         self.origin = msg.info.origin
 
         
@@ -115,7 +126,7 @@ class PathPlan(Node):
             self.get_logger().info("ending goal pose cb")
         
 
-    def plan_path(self, start_point, end_point, map, goal_sample_rate = 0.05,step_size=1,max_iter=100000,rewire_radius = 2):
+    def plan_path(self, start_point, end_point, map, goal_sample_rate = 0.2,step_size=.4/0.0504,max_iter=20000,rewire_radius = 1/0.0504):
         """
         params:
         start_point - PoseWithCovarianceStamped
@@ -125,46 +136,69 @@ class PathPlan(Node):
         """
         self.get_logger().info("starting path planning")
         path=False
-        start_point = transform_wtm(start_point.pose.pose.position.x,start_point.pose.pose.position.y)
+
+        # Get the orientation quaternion from the message
+        quaternion = start_point.pose.pose.orientation
+
+        # Convert the quaternion to Euler angles (roll, pitch, yaw)
+        (roll, pitch, yaw) = euler_from_quaternion([quaternion.x, quaternion.y, quaternion.z, quaternion.w])
+
+        # Get the theta (yaw) component
+        theta_start = yaw
+        
+
+
+        # Get the orientation quaternion from the message
+        quaternion = end_point.pose.orientation
+
+        # Convert the quaternion to Euler angles (roll, pitch, yaw)
+        (roll, pitch, yaw) = euler_from_quaternion([quaternion.x, quaternion.y, quaternion.z, quaternion.w])
+
+        # Get the theta (yaw) component
+        theta_end = yaw
+
+        start_point = transform_wtm(start_point.pose.pose.position.x,start_point.pose.pose.position.y,theta_start)
         self.get_logger().info(f"prob at start point {start_point[0],start_point[1]}: {self.map_data[int(start_point[1]),int(start_point[0])]}")
-        end_point = TreeNode(*transform_wtm(end_point.pose.position.x,end_point.pose.position.y))
+        end_point = TreeNode(*transform_wtm(end_point.pose.position.x,end_point.pose.position.y,theta_end))
         #initialize tree with start point
         
         tree = [TreeNode(*start_point)]
-
+        
         for _ in range(max_iter):
-
-            #sample random point to explore
-            q_rand = get_random_point(self.map_data)
+            
+            
             #every once in a while just try to go towards goal point, helps focus search
             if np.random.random() < goal_sample_rate:
                 q_rand = end_point
+            else:
+                #sample random point to explore
+                q_rand = get_random_point(self.free_space)
 
             #find nearest point in tree to our sampled node
             q_near = get_nearest_point(tree,q_rand)
             
             #create new node with nearest node as its parent and input its cost
             q_new = new_state(q_near, q_rand, step_size)
-            new_cost = q_near.cost + euclidean_distance(q_near, q_new)
+            new_cost = q_near.cost + cost_func(q_near, q_new)
             q_new.update_parent(q_near)
             q_new.update_cost(new_cost)
             
             #add new nodes to tree if the move is possible
             if is_collision_free(q_near, q_new, self.map_data):
-                
-                near_nodes = [node for node in tree if euclidean_distance(node, q_new) < rewire_radius]
+                #self.get_logger().info("in append stage")
+                #near_nodes = [node for node in tree if cost_func(node, q_new) < rewire_radius]
                 tree.append(q_new)
                 #update tree to retain optimal paths
-                rewire(tree, q_new, near_nodes, step_size, self.map_data)
+                #rewire(tree, q_new, near_nodes, step_size, self.map_data)
 
                 #if goal is within reach, just go to goal and return path
-                if euclidean_distance(q_new, end_point) <= step_size:
+                if cost_func(q_new, end_point) <= step_size:
                     self.goal_node = end_point
                     goal_node = end_point
                     goal_node.parent = q_new
-                    goal_node.cost = q_new.cost + euclidean_distance(q_new, end_point)
+                    goal_node.cost = q_new.cost + cost_func(q_new, end_point)
                     tree.append(goal_node)
-                    rewire(tree, goal_node, [q_new], step_size, self.map_data)
+                    #rewire(tree, goal_node, [q_new], step_size, self.map_data)
                     path = True
                     break
 
@@ -180,6 +214,13 @@ class PathPlan(Node):
             self.trajectory.publish_viz()
         else:
             self.get_logger().info("no path, sad")
+            
+            for point in tree:
+                new_x,new_y = transform_mtw(point.x, point.y)
+                self.trajectory.addPoint((new_x,new_y))
+           
+            self.traj_pub.publish(self.trajectory.toPoseArray())
+            self.trajectory.publish_viz()
             
             
 

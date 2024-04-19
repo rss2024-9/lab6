@@ -8,6 +8,8 @@ from .utils import LineTrajectory
 
 import numpy as np
 import heapq
+import pdb
+
 
 
 
@@ -29,6 +31,8 @@ class PathPlan(Node):
         self.map = None
         self.start_pose = None
         self.end_pose = None
+        self.resolution = 0.1
+        self.step_size = self.resolution/2
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -124,7 +128,6 @@ class PathPlan(Node):
             self.get_logger().warn("invalid start or goal point")
             return
 
-        # Dijkstra's 
         visited = set()
         scores = {start: 0}
         previous = {}
@@ -140,6 +143,7 @@ class PathPlan(Node):
 
             # if this is the last node then reconstruct the path
             if current_node == end:
+                self.get_logger().info("we have a found a path and are reconstructing")
                 path = self.reconstruct_path(previous, start, end)
                 self.publish_trajectory(path)
                 return
@@ -164,8 +168,19 @@ class PathPlan(Node):
 
                     # should i be appending to a list here
                     previous[neighbor] = current_node
-
                     heapq.heappush(queue, (new_score, neighbor))
+
+                # checking if within a stepsize and moving there (since almost impossible to get exact endpoint)
+                # this does not guarantee an optimal path 
+                if neighbor_end <= self.step_size:
+                    scores[end] = float("-inf")
+                    previous[end] = neighbor
+                    heapq.heappush(queue, (scores[end], end))
+                    self.get_logger().info("forcing path to end")
+
+                    break
+        
+        self.get_logger().info("outside of while loop")
 
 
     # EXTRA FUNCTIONS: 
@@ -188,7 +203,7 @@ class PathPlan(Node):
         x_new = x_temp + x_offset
         y_new = y_temp +y_offset
 
-        return int(x_new), int(y_new)
+        return x_new, y_new
 
     def transform_wtm(self, x, y):
         """
@@ -211,7 +226,7 @@ class PathPlan(Node):
         new_y/=resolution
         
         # changed this to be ints
-        return int(new_x), int(new_y)
+        return new_x, new_y
 
     def get_neighbors(self, cell):
         '''
@@ -235,7 +250,7 @@ class PathPlan(Node):
         # self.get_logger().info(f"check point {self.map[int(cell[1]),int(cell[0])]}")
         # self.get_logger().info(f"cell: {self.map[x,y]}")
         
-        return self.map[y, x] == 0
+        return self.map[int(y), int(x)] == 0
 
     def distance(self, cell1, cell2):
         '''
@@ -256,6 +271,7 @@ class PathPlan(Node):
             current = previous[current]
             path.append(self.transform_mtw(current[0], current[1]))
         path.reverse()
+        self.get_logger().info(f"{path}")
         return path
 
     def publish_trajectory(self, path):

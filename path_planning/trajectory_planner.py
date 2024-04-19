@@ -284,8 +284,8 @@ class PathPlan(Node):
                 # made the coords floats cuz it was complaining
                 coords = (float(coords[0]), float(coords[1]))
                 self.trajectory.addPoint(coords)         
-                self.traj_pub.publish(self.trajectory.toPoseArray())
-                self.trajectory.publish_viz()
+            self.traj_pub.publish(self.trajectory.toPoseArray())
+            self.trajectory.publish_viz()
         else:
             self.get_logger().info("no path, sad")
             

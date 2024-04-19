@@ -85,19 +85,28 @@ def get_random_point(map):
     return TreeNode(float(x),float(y),theta)
 
 
-def get_nearest_point( tree, point):
-    """
-    Find the nearest point in the tree to the given point
-    params:
-    tree - list of TreeNodes
-    point - TreeNode
-    returns: nearest TreeNode
+# def get_nearest_point( tree, point):
+#     """
+#     Find the nearest point in the tree to the given point
+#     params:
+#     tree - list of TreeNodes
+#     point - TreeNode
+#     returns: nearest TreeNode
 
-    """
+#     """
     
-    distances = [cost_func(point, n) for n in tree]
-    nearest_index = np.argmin(distances)
-    return tree[nearest_index]
+#     # Extract the coordinates and thetas from the tree nodes and the point
+#     tree_coords = np.array([(n.x, n.y) for n in tree])
+#     point_coords = np.array([point.x, point.y])
+    
+#     # Calculate the euclidean distances using vectorized operations
+#     distances = np.linalg.norm(tree_coords - point_coords, axis=1)
+    
+#     # Find the index of the nearest point
+#     nearest_index = np.argmin(distances)
+    
+#     # Return the nearest TreeNode
+#     return tree[nearest_index]
     
 
 def new_state( q_nearest, q_rand, step_size,turning_radius=turning_rad/resolution):
@@ -131,67 +140,89 @@ def new_state( q_nearest, q_rand, step_size,turning_radius=turning_rad/resolutio
     return TreeNode(*point)
     
 
-def is_collision_free( p1, p2, map):
-    # Check if the path between p1 and p2 is free of obstacles
+# def is_collision_free( p1, p2, map):
+#     # Check if the path between p1 and p2 is free of obstacles
 
-    # Convert the poses to grid coordinates
-    x2, y2 = int(p2.x), int(p2.y)
-    turning_radius = turning_rad/resolution #turning radius divided by resolution
-    configs , _ = dubins.shortest_path((p1.x,p1.y,p1.theta),(p2.x,p2.y,p2.theta),turning_radius).sample_many(.25/.0504)
-    # If the target cell is occupied (probability > 0.65), return True,
-    configs.append((x2,y2))
+#     # # Convert the poses to grid coordinates
+#     # x2, y2 = int(p2.x), int(p2.y)
+#     # turning_radius = turning_rad/resolution #turning radius divided by resolution
+#     # configs , _ = dubins.shortest_path((p1.x,p1.y,p1.theta),(p2.x,p2.y,p2.theta),turning_radius).sample_many(.25/.0504)
+#     # # If the target cell is occupied (probability > 0.65), return True,
+#     # configs.append((x2,y2))
 
-    if any([map[int(point[1]), int(point[0])] !=0 for point in configs ]):
-        return False
+#     # if any([map[int(point[1]), int(point[0])] !=0 for point in configs ]):
+#     #     return False
 
-    # If the target cell is not occupied, return False
-    return True
+#     # # If the target cell is not occupied, return False
+#     # return True
+
+#     # Convert the poses to grid coordinates
+#     x2, y2 = int(p2.x), int(p2.y)
+#     turning_radius = turning_rad / resolution  # turning radius divided by resolution
+#     configs, _ = dubins.shortest_path((p1.x, p1.y, p1.theta), (p2.x, p2.y, p2.theta), turning_radius).sample_many(.25 / .0504)
+#     # Append target cell to configs
+#     configs.append((p2.x, p2.y,p2.theta))
+
+#     # Convert configs to NumPy array for vectorized operations
+#     configs_np = np.array(configs, dtype=int)
+
+#     # Check if any of the cells in the path are occupied using vectorized comparison
+#     occupied_cells = map[configs_np[:, 1], configs_np[:, 0]] != 0
+
+#     # If any cell in the path is occupied, return False, otherwise return True
+#     return not np.any(occupied_cells)
     
 
-def rewire( tree, q_new, near_nodes, step_size,map):
-    # Rewire the tree to maintain optimality
+# def rewire( tree, q_new, near_nodes, step_size,map):
+#     # Rewire the tree to maintain optimality
 
-    for near_node in near_nodes:
-        if near_node == q_new.parent:
-            continue
-        new_cost = near_node.cost + cost_func(near_node, q_new)
-        if new_cost < q_new.cost and is_collision_free(near_node, q_new, map):
-            q_new.update_parent(near_node)
-            q_new.update_cost(new_cost)
-            update_children_costs(tree, q_new, step_size, map)
+#     for near_node in near_nodes:
+#         if near_node == q_new.parent:
+#             continue
+#         new_cost = near_node.cost + cost_func(near_node, q_new)
+#         if new_cost < q_new.cost and is_collision_free(near_node, q_new, map):
+#             q_new.update_parent(near_node)
+#             q_new.update_cost(new_cost)
+#             update_children_costs(tree, q_new, step_size, map)
     
 
 
-def update_children_costs(tree,parent, step_size, map):
+# def update_children_costs(tree,parent, step_size, map):
 
-    # for node in parent.children:
-    #     new_cost = parent.cost + euclidean_distance(parent, node)
-    #     if new_cost < node.cost and is_collision_free(parent, node, obstacles):
-    #         node.parent = parent
-    #         node.cost = new_cost
-    #         update_children_costs(node, step_size, obstacles)
+#     # for node in parent.children:
+#     #     new_cost = parent.cost + euclidean_distance(parent, node)
+#     #     if new_cost < node.cost and is_collision_free(parent, node, obstacles):
+#     #         node.parent = parent
+#     #         node.cost = new_cost
+#     #         update_children_costs(node, step_size, obstacles)
 
-    for node in tree:
-        if node.parent == parent:
-            new_cost = parent.cost + cost_func(parent, node)
-            if new_cost < node.cost and is_collision_free(parent, node, map):
-                node.parent = parent
-                node.cost = new_cost
-                update_children_costs(tree, node, step_size, map)
+#     for node in tree:
+#         if node.parent == parent:
+#             new_cost = parent.cost + cost_func(parent, node)
+#             if new_cost < node.cost and is_collision_free(parent, node, map):
+#                 node.parent = parent
+#                 node.cost = new_cost
+#                 update_children_costs(tree, node, step_size, map)
 
 
 def create_path( end_point):
     # Create a path from the start to the goal 
-    path = []
+    x_old = []
+    y_old =[]
     node = end_point
     #get path in reverse order
     while node is not None:
-                
-                path.append(transform_mtw(node.x, node.y))
+                x_old.append(node.x)
+                y_old.append(node.y)
                 node = node.parent
+    x_old = np.array(x_old)
+    y_old = np.array(y_old)
+    new_x,new_y = transform_mtw(x_old,y_old)
+
+    path = list(zip(new_x,new_y))
 
     #return path in correct order
-    return path[::-1]
+    return path.reverse()
     
 
 

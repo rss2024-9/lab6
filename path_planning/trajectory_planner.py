@@ -33,6 +33,7 @@ class PathPlan(Node):
         self.start_pose = None
         self.goal_pose = None
         self.goal_pose = None
+        self.tree=[]
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -103,7 +104,7 @@ class PathPlan(Node):
         self.get_logger().info("got initial pose")
         if self.goal_pose is not None and self.map_data is not None:
             self.trajectory.clear()
-            self.plan_path(self.start_pose,self.goal_pose,self.map_data)
+            self.plan_path(self.start_pose,self.goal_pose)
             self.start_pose = None
             self.goal_pose = None
             self.goal_node = None
@@ -119,14 +120,71 @@ class PathPlan(Node):
         self.get_logger().info("got goal pose")
         if self.start_pose is not None and self.map_data is not None:
             self.trajectory.clear()
-            self.plan_path(self.start_pose,self.goal_pose,self.map_data)
+            self.plan_path(self.start_pose,self.goal_pose)
             self.start_pose = None
             self.goal_pose = None
             self.goal_node = None
             self.get_logger().info("ending goal pose cb")
-        
 
-    def plan_path(self, start_point, end_point, map, goal_sample_rate = 0.2,step_size=.4/0.0504,max_iter=20000,rewire_radius = 1/0.0504):
+    def get_nearest_point(self,point):
+        """
+        Find the nearest point in the tree to the given point
+        params:
+        tree - list of TreeNodes
+        point - TreeNode
+        returns: nearest TreeNode
+
+        """
+        
+        # Extract the coordinates and thetas from the tree nodes and the point
+        tree_coords = np.array([(n.x, n.y) for n in self.tree])
+        point_coords = np.array([point.x, point.y])
+        
+        # Calculate the euclidean distances using vectorized operations
+        distances = np.linalg.norm(tree_coords - point_coords, axis=1)
+        
+        # Find the index of the nearest point
+        nearest_index = np.argmin(distances)
+        
+        # Return the nearest TreeNode
+        return self.tree[nearest_index]
+    
+    def is_collision_free(self, p1, p2):
+        # Check if the path between p1 and p2 is free of obstacles
+
+        # Convert the poses to grid coordinates
+        x2, y2 = int(p2.x), int(p2.y)
+        turning_radius = turning_rad / resolution  # turning radius divided by resolution
+        configs, _ = dubins.shortest_path((p1.x, p1.y, p1.theta), (p2.x, p2.y, p2.theta), turning_radius).sample_many(.25 / .0504)
+        # Append target cell to configs
+        configs.append((p2.x, p2.y,p2.theta))
+
+        # Convert configs to NumPy array for vectorized operations
+        configs_np = np.array(configs, dtype=int)
+
+        # Check if any of the cells in the path are occupied using vectorized comparison
+        occupied_cells = self.map_data[configs_np[:, 1], configs_np[:, 0]] != 0
+
+        # If any cell in the path is occupied, return False, otherwise return True
+        return not np.any(occupied_cells)
+    
+    def get_random_point(self):
+        """
+        Generate a random point in the configuration space
+        params: 
+        map-2D np array
+        returns: TreeNode
+        """
+        theta = np.random.uniform(0, 2*np.pi)
+        point = random.choice(self.free_space)
+
+        x=point[1] #column or x value
+        y=point[0] #row or y value
+
+
+        return TreeNode(float(x),float(y),theta)
+
+    def plan_path(self, start_point, end_point, goal_sample_rate = 0.2,step_size=.4/0.0504,max_iter=20000,rewire_radius = 1/0.0504):
         """
         params:
         start_point - PoseWithCovarianceStamped
@@ -162,7 +220,7 @@ class PathPlan(Node):
         end_point = TreeNode(*transform_wtm(end_point.pose.position.x,end_point.pose.position.y,theta_end))
         #initialize tree with start point
         
-        tree = [TreeNode(*start_point)]
+        self.tree = [TreeNode(*start_point)]
         
         for _ in range(max_iter):
             
@@ -172,10 +230,12 @@ class PathPlan(Node):
                 q_rand = end_point
             else:
                 #sample random point to explore
-                q_rand = get_random_point(self.free_space)
+                
+                q_rand = self.get_random_point()
 
             #find nearest point in tree to our sampled node
-            q_near = get_nearest_point(tree,q_rand)
+            
+            q_near = self.get_nearest_point(q_rand)
             
             #create new node with nearest node as its parent and input its cost
             q_new = new_state(q_near, q_rand, step_size)
@@ -184,10 +244,10 @@ class PathPlan(Node):
             q_new.update_cost(new_cost)
             
             #add new nodes to tree if the move is possible
-            if is_collision_free(q_near, q_new, self.map_data):
+            if self.is_collision_free(q_near, q_new):
                 #self.get_logger().info("in append stage")
                 #near_nodes = [node for node in tree if cost_func(node, q_new) < rewire_radius]
-                tree.append(q_new)
+                self.tree.append(q_new)
                 #update tree to retain optimal paths
                 #rewire(tree, q_new, near_nodes, step_size, self.map_data)
 
@@ -197,7 +257,7 @@ class PathPlan(Node):
                     goal_node = end_point
                     goal_node.parent = q_new
                     goal_node.cost = q_new.cost + cost_func(q_new, end_point)
-                    tree.append(goal_node)
+                    self.tree.append(goal_node)
                     #rewire(tree, goal_node, [q_new], step_size, self.map_data)
                     path = True
                     break
@@ -215,7 +275,7 @@ class PathPlan(Node):
         else:
             self.get_logger().info("no path, sad")
             
-            for point in tree:
+            for point in self.tree:
                 new_x,new_y = transform_mtw(point.x, point.y)
                 self.trajectory.addPoint((new_x,new_y))
            

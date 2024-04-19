@@ -220,9 +220,9 @@ def create_path( end_point):
     new_x,new_y = transform_mtw(x_old,y_old)
 
     path = list(zip(new_x,new_y))
-
+    path.reverse()
     #return path in correct order
-    return path.reverse()
+    return path
     
 
 

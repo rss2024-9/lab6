@@ -184,7 +184,7 @@ class PathPlan(Node):
 
         return TreeNode(float(x),float(y),theta)
 
-    def plan_path(self, start_point, end_point, goal_sample_rate = 0.2,step_size=.4/0.0504,max_iter=20000,rewire_radius = 1/0.0504):
+    def plan_path(self, start_point, end_point, goal_sample_rate = 0.3,step_size=.5/0.0504,max_iter=20000,rewire_radius = 1/0.0504):
         """
         params:
         start_point - PoseWithCovarianceStamped

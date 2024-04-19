@@ -135,17 +135,14 @@ class PathPlan(Node):
         previous = {}
         # have f-score and position/node that it corresponds to (start is 0)
         queue = [(0, start)]
-        # queue = heapq.heapify([(0, start)])
 
-        # im not sure if this is legal if queue is a heap
         while queue:
-            # self.get_logger().info(f'first element in queue: {queue[0]}')
             # self.get_logger().info(f'going through queue')
             current_score, current_node = heapq.heappop(queue)
 
             # if this is the last node then reconstruct the path
             if current_node == end:
-                self.get_logger().info("we have a found a path and are reconstructing")
+                # self.get_logger().info("we have a found a path and are reconstructing")
                 path = self.reconstruct_path(previous, start, end)
                 self.publish_trajectory(path)
                 return
@@ -179,7 +176,6 @@ class PathPlan(Node):
                 #     previous[end] = neighbor
                 #     heapq.heappush(queue, (scores[end], end))
                 #     self.get_logger().info("forcing path to end")
-
                 #     break
         
         self.get_logger().info("outside of while loop")
@@ -246,11 +242,6 @@ class PathPlan(Node):
         # x and y are flipped
         x = cell[0]
         y = cell[1]
-        # self.get_logger().info(f"x : {x}, y : {y}")
-        # im not sure if it should be 0 <= seeing if this would help with crashing into walls
-        # also not sure what the boundaries are
-        # self.get_logger().info(f"check point {self.map[int(cell[1]),int(cell[0])]}")
-        # self.get_logger().info(f"cell: {self.map[x,y]}")
         
         return self.map[int(y), int(x)] == 0
 

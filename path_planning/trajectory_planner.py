@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 
 assert rclpy
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray,PointStamped
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
 from .tree import *
@@ -64,6 +64,62 @@ class PathPlan(Node):
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
+        self.map_pub = self.create_publisher(
+            OccupancyGrid,
+            "/new_map",
+            10
+        )
+
+        self.test_num = 0
+        self.num_tests = 8
+        self.click_sub = self.create_subscription(
+            PointStamped,
+            "/clicked_point",
+            self.test_node,
+            10
+        )
+        self.initial_pub = self.create_pubblisher(PoseWithCovarianceStamped,
+            self.initial_pose_topic,
+            10
+        )
+        self.goal_pub = self.create_publisher(
+            PoseStamped,
+            "/goal_pose",
+            self.goal_cb,
+            10
+        )
+
+
+
+    def test_node(self,msg):
+        """
+        When a point is clicked it starts the next test in the queue, karen you can change how this works if you
+        want this was just my initial idea of how to test stuff
+        """
+        def tester(start,end):
+            """
+            Publish initial positions and goal positions to test path planner
+            """
+            self.get_logger().info(f"starting test: {self.test_num/self.num_tests}")
+            self.initial_pub(start)
+            self.goal_pub(end)
+
+        #!TODO continue adding cases
+        #write out all the messages with the information they need headers, x,y, and
+        #orientation (orientations are really important for RRT so make sure those look reasonable)
+        #Use the publish point tool and ros2 topic echo of "/clicked_point" to choose what points to use
+        msg1 = PoseWithCovarianceStamped()
+        msg2 = PoseStamped()
+
+
+        test_conditions = {0:(msg1,msg2)}
+        conds = test_conditions[self.test_num]
+        
+        tester(conds[0],conds[1])
+        self.test_num+=1%self.num_tests
+
+
+
     def map_cb(self, msg):
         """
         Takes in an OccupancyGrid msg and creates internal representation of the map in the form of
@@ -76,7 +132,7 @@ class PathPlan(Node):
 
         width = msg.info.width
         height = msg.info.height
-        self.map_data = erode_map(np.array(msg.data).reshape(height,width),.25/.0504)
+        self.map_data = erode_map(np.array(msg.data).reshape(height,width),.4/.0504)
 
         zero_indices = np.where(self.map_data == 0)
 
@@ -182,7 +238,7 @@ class PathPlan(Node):
 
         return TreeNode(float(x),float(y),theta)
 
-    def plan_path(self, start_point, end_point, goal_sample_rate = 0.3,step_size=.5/0.0504,max_iter=20000,rewire_radius = 1/0.0504):
+    def plan_path(self, start_point, end_point, goal_sample_rate = 0.3,step_size=.45/0.0504,max_iter=20000,rewire_radius = 1/0.0504):
         """
         params:
         start_point - PoseWithCovarianceStamped
@@ -217,13 +273,18 @@ class PathPlan(Node):
         #initialize tree with start point
         
         self.tree = [TreeNode(*start_point)]
+        goal_offset = .5*step_size
         
         for _ in range(max_iter):
             
             
             #every once in a while just try to go towards goal point, helps focus search
             if np.random.random() < goal_sample_rate:
-                q_rand = end_point
+                # Sample a random point near the goal
+                offset_x = np.random.uniform(-goal_offset, goal_offset)
+                offset_y = np.random.uniform(-goal_offset, goal_offset)
+                q_rand = TreeNode(end_point.x + offset_x, end_point.y + offset_y,end_point.theta)
+               
             else:
                 #sample random point to explore
                 q_rand = self.get_random_point()

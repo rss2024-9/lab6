@@ -25,7 +25,8 @@ class PathPlan(Node):
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
-
+        self.get_logger().info(f"initial pose topic: {self.initial_pose_topic}")
+       
 
         self.map_data = None #to be populated with 2D np array
         self.free_space =None

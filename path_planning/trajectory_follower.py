@@ -64,7 +64,7 @@ class PurePursuit(Node):
         #if there is no trajectory loaded wait
         #self.get_logger().info(f"{np.array(self.trajectory.points)}")
         if np.array(self.trajectory.points).size == 0:
-            self.get_logger().info(f"waiting for trajectory")
+            # self.get_logger().info(f"waiting for trajectory")
             drive_msg = AckermannDriveStamped()
             drive_msg.drive.speed = 0.0 
             drive_msg.drive.steering_angle = 0.0

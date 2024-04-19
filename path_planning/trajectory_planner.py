@@ -31,8 +31,11 @@ class PathPlan(Node):
         self.map = None
         self.start_pose = None
         self.end_pose = None
-        self.resolution = 0.1
-        self.step_size = self.resolution/2
+        # self.resolution = 0.5
+        # self.step_size = self.resolution
+
+        self.return_start = None
+        self.return_end = None
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -76,9 +79,6 @@ class PathPlan(Node):
         rows = msg.info.height
         self.map = np.array(msg.data).reshape((rows, cols))
         
-        # what is origin used for
-        self.origin = msg.info.origin
-
         self.get_logger().info(f"got map, shape: {self.map.shape}")
 
     def pose_cb(self, pose):
@@ -117,10 +117,12 @@ class PathPlan(Node):
     def plan_path(self, start_point, end_point, map):
         # getting start and end points 
         self.get_logger().info("starting path planning")
-        start = self.transform_wtm(start_point.pose.pose.position.x, start_point.pose.pose.position.y)
+        self.return_start = self.transform_wtm(start_point.pose.pose.position.x, start_point.pose.pose.position.y)
+        start = (int(self.return_start[0]), int(self.return_start[1]))
         self.get_logger().info(f"start point {start[0],start[1]}: {self.map[int(start[1]),int(start[0])]}")
         
-        end = self.transform_wtm(end_point.pose.position.x, end_point.pose.position.y)
+        self.return_end = self.transform_wtm(end_point.pose.position.x, end_point.pose.position.y)
+        end = (int(self.return_end[0]), int(self.return_end[1]))
         self.get_logger().info(f"end point {end[0],end[1]}: {self.map[int(end[1]),int(end[0])]}")
 
 
@@ -172,13 +174,13 @@ class PathPlan(Node):
 
                 # checking if within a stepsize and moving there (since almost impossible to get exact endpoint)
                 # this does not guarantee an optimal path 
-                if neighbor_end <= self.step_size:
-                    scores[end] = float("-inf")
-                    previous[end] = neighbor
-                    heapq.heappush(queue, (scores[end], end))
-                    self.get_logger().info("forcing path to end")
+                # if neighbor_end <= self.step_size:
+                #     scores[end] = float("-inf")
+                #     previous[end] = neighbor
+                #     heapq.heappush(queue, (scores[end], end))
+                #     self.get_logger().info("forcing path to end")
 
-                    break
+                #     break
         
         self.get_logger().info("outside of while loop")
 
@@ -233,7 +235,7 @@ class PathPlan(Node):
         getting the possible neighbors within -1 or 1 of the current
         '''
         x, y = cell
-        neighbors = [(x + dx, y + dy) for dx in [-1, 1] for dy in [-1, 1]]
+        neighbors = [(x + dx, y + dy) for dx in [-0.5, 0.5] for dy in [-0.5, 0.5]]
         valid_neighbors = filter(self.is_valid_cell, neighbors)
         return valid_neighbors
 
@@ -265,11 +267,12 @@ class PathPlan(Node):
         taking the path from the end and then going back up
         until the start
         '''
-        path = [end]
+        path = [self.transform_mtw(self.return_end[0], self.return_end[1])]
         current = end
         while current != start :
             current = previous[current]
             path.append(self.transform_mtw(current[0], current[1]))
+        path.append(self.transform_mtw(self.return_start[0], self.return_start[1]))
         path.reverse()
         self.get_logger().info(f"{path}")
         return path

@@ -6,7 +6,6 @@ import random
 turning_rad = 0.848
 resolution = 0.0504
 
-#TODO fix pose stuff, honestly just rewrite the class and functions so all of them just use the Pose class in TreeNode
 class TreeNode:
     def __init__(self, x, y,theta, parent=None,cost=0.0):
         self.x = x
@@ -35,7 +34,7 @@ def cost_func(p1,p2,turning_radius=turning_rad/resolution):
     
     # # Return the length of the path
     # return path.path_length()
-    return euclidean_distance(p1,p2)
+    return np.linalg.norm(np.array([p1.x,p1.y]) - np.array([p2.x,p2.y]))
 
 
 

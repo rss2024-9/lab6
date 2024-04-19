@@ -7,8 +7,8 @@ from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
 from .tree import *
 import numpy as np
-from tf_transformations import euler_from_quaternion, quaternion_from_euler
-import cv2
+from tf_transformations import euler_from_quaternion
+
 
 
 class PathPlan(Node):
@@ -32,7 +32,7 @@ class PathPlan(Node):
         self.origin = None #Pose msg to draw position and orientation from
         self.start_pose = None
         self.goal_pose = None
-        self.goal_pose = None
+        self.goal_node = None
         self.tree=[]
 
         self.map_sub = self.create_subscription(
@@ -82,12 +82,7 @@ class PathPlan(Node):
         # Convert the indices to a list of tuples
         zero_indices_list = list(zip(zero_indices[0], zero_indices[1]))
         self.free_space = zero_indices_list
-
-
-        self.origin = msg.info.origin
-
         
-
         self.get_logger().info(f"got map, shape: {self.map_data.shape}")
        
         
@@ -103,6 +98,7 @@ class PathPlan(Node):
         self.start_pose = pose
         self.get_logger().info("got initial pose")
         if self.goal_pose is not None and self.map_data is not None:
+            #clear any old trajectories if they exist and start new path search
             self.trajectory.clear()
             self.plan_path(self.start_pose,self.goal_pose)
             self.start_pose = None
@@ -119,6 +115,7 @@ class PathPlan(Node):
         self.goal_pose = msg
         self.get_logger().info("got goal pose")
         if self.start_pose is not None and self.map_data is not None:
+            #clear any old trajectories if they exist and start new path search
             self.trajectory.clear()
             self.plan_path(self.start_pose,self.goal_pose)
             self.start_pose = None
@@ -204,8 +201,6 @@ class PathPlan(Node):
         # Get the theta (yaw) component
         theta_start = yaw
         
-
-
         # Get the orientation quaternion from the message
         quaternion = end_point.pose.orientation
 
@@ -230,11 +225,9 @@ class PathPlan(Node):
                 q_rand = end_point
             else:
                 #sample random point to explore
-                
                 q_rand = self.get_random_point()
 
             #find nearest point in tree to our sampled node
-            
             q_near = self.get_nearest_point(q_rand)
             
             #create new node with nearest node as its parent and input its cost
@@ -268,8 +261,6 @@ class PathPlan(Node):
             path = create_path(self.goal_node)
             for coords in path:
                 self.trajectory.addPoint(coords)
-
-           
             self.traj_pub.publish(self.trajectory.toPoseArray())
             self.trajectory.publish_viz()
         else:

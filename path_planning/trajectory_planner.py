@@ -40,6 +40,9 @@ class PathPlan(Node):
         self.test_num = 0
         self.num_tests = 8
         self.run_counter = 0
+
+        self.resolution = 0.0504
+
         with open('path_test.txt', 'w') as file:
             pass
 
@@ -261,6 +264,8 @@ class PathPlan(Node):
                 runtime = end_time - start_time
                 with open('path_test.txt', 'a') as file:
                     file.write(f'test {self.run_counter}: {runtime} \n')
+                    # why is this off???????
+                    file.write(f'distance {self.run_counter}: {scores[current_node]*0.0504} \n')
                 self.publish_trajectory(path)
                 return
 
@@ -274,15 +279,12 @@ class PathPlan(Node):
 
                 # f-score is distance to neighbor + neighbor to end
                 neighbor_end = self.distance(neighbor, end)
-                # theoretically distance from current_node to neighbor should be 1
                 start_neighbor = current_score + self.distance(current_node, neighbor)
                 new_score = start_neighbor + neighbor_end
 
                 # updating distances
                 if neighbor not in scores or new_score < scores[neighbor]:
                     scores[neighbor] = new_score
-
-                    # should i be appending to a list here
                     previous[neighbor] = current_node
                     heapq.heappush(queue, (new_score, neighbor))
 

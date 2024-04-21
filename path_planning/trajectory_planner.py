@@ -3,7 +3,7 @@ from rclpy.node import Node
 
 assert rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray,PointStamped
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, Odometry
 from .utils import LineTrajectory
 from .tree import *
 import numpy as np
@@ -62,6 +62,8 @@ class PathPlan(Node):
             10
         )
 
+        self.localize_sub = self.create_subscription(Odometry,"/pf/pose/odom",self.localize_cb,10)
+
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
         self.map_pub = self.create_publisher(
@@ -78,17 +80,19 @@ class PathPlan(Node):
             self.test_node,
             10
         )
-        self.initial_pub = self.create_pubblisher(PoseWithCovarianceStamped,
+        self.initial_pub = self.create_publisher(PoseWithCovarianceStamped,
             self.initial_pose_topic,
             10
         )
         self.goal_pub = self.create_publisher(
             PoseStamped,
             "/goal_pose",
-            self.goal_cb,
             10
         )
+        
 
+    def localize_cb(self,msg):
+        self.start_pose = msg
 
 
     def test_node(self,msg):
@@ -151,7 +155,8 @@ class PathPlan(Node):
         params:
         pose - PoseWithCovarianceStamped
         """
-
+        #have return here so it doesn't start doing anything when everything works together
+        return
         self.start_pose = pose
         self.get_logger().info("got initial pose")
         if self.goal_pose is not None and self.map_data is not None:
@@ -207,7 +212,7 @@ class PathPlan(Node):
         # Check if the path between p1 and p2 is free of obstacles
 
         # Convert the poses to grid coordinates
-        x2, y2 = int(p2.x), int(p2.y)
+        
         turning_radius = turning_rad / resolution  # turning radius divided by resolution
         configs, _ = dubins.shortest_path((p1.x, p1.y, p1.theta), (p2.x, p2.y, p2.theta), turning_radius).sample_many(.25 / .0504)
         # Append target cell to configs
@@ -237,8 +242,8 @@ class PathPlan(Node):
 
 
         return TreeNode(float(x),float(y),theta)
-
-    def plan_path(self, start_point, end_point, goal_sample_rate = 0.3,step_size=.45/0.0504,max_iter=20000,rewire_radius = 1/0.0504):
+    
+    def plan_path(self, start_point, end_point, goal_sample_rate = 0.3,step_size=.45/0.0504,max_iter=25000,rewire_radius = 1/0.0504):
         """
         params:
         start_point - PoseWithCovarianceStamped
@@ -319,7 +324,7 @@ class PathPlan(Node):
 
 
         if path:
-            self.get_logger().info("path planned woohoo")
+            self.get_logger().info(f"path planned woohoo, needed {_} iterations")
             path = create_path(self.goal_node)
             for coords in path:
                 self.trajectory.addPoint(coords)

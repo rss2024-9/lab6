@@ -38,8 +38,8 @@ class PurePursuit(Node):
                                                1)
         
         #subscribe to particle filter localization #turn back on for real car
-        #self.pose_sub = self.create_subscription(Odometry,"/pf/pose/odom",self.pose_callback, 1)
-        self.pose_sub = self.create_subscription(Odometry,"/odom",self.pose_callback, 1)   
+        self.pose_sub = self.create_subscription(Odometry,"/pf/pose/odom",self.pose_callback, 1)
+        #self.pose_sub = self.create_subscription(Odometry,"/odom",self.pose_callback, 1)   
 
         #viz target point
         self.viz_pub = self.create_publisher(PoseArray, "/target_point", 1) 

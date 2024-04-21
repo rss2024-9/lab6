@@ -124,7 +124,7 @@ def new_state( q_nearest, q_rand, step_size,turning_radius=turning_rad/resolutio
     #     direction = np.array([q_rand.x,q_rand.y]) - np.array([q_nearest.x,q_nearest.y])
     #     direction /= distance
     #     new_point = np.array([q_nearest.x,q_nearest.y]) + direction * step_size
-    #     return TreeNode(new_point[0],new_point[1])
+    #     return TreeNode(new_point[0],new_point[1],np.random.uniform(0,np.pi*2))
     
     path = dubins.shortest_path((q_nearest.x, q_nearest.y, q_nearest.theta), 
                                 (q_rand.x, q_rand.y, q_rand.theta), 

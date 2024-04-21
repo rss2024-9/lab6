@@ -2,15 +2,15 @@ import rclpy
 from rclpy.node import Node
 
 assert rclpy
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray,PointStamped
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
 
+from skimage.morphology import erosion, disk
 import numpy as np
 import heapq
 import pdb
-
-
+import time
 
 
 class PathPlan(Node):
@@ -36,6 +36,12 @@ class PathPlan(Node):
 
         self.return_start = None
         self.return_end = None
+
+        self.test_num = 0
+        self.num_tests = 8
+        self.run_counter = 0
+        with open('path_test.txt', 'w') as file:
+            pass
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -63,7 +69,113 @@ class PathPlan(Node):
             10
         )
 
+        self.initial_pub = self.create_publisher(PoseWithCovarianceStamped,
+            self.initial_pose_topic,
+            10
+        )
+        self.goal_pub = self.create_publisher(
+            PoseStamped,
+            "/goal_pose",
+            10
+        )
+
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
+
+        self.tester_thing = self.create_subscription(PointStamped,"/clicked_point",self.test_node,10)
+
+    def test_node(self,msg):
+        """
+        When a point is clicked it starts the next test in the queue
+        """
+        def tester(start,end):
+            """
+            Publish initial positions and goal positions to test path planner
+            """
+            self.get_logger().info(f"starting test: {self.test_num/self.num_tests}")
+            self.initial_pub.publish(start)
+            self.goal_pub.publish(end)
+
+        #!TODO continue adding cases
+        #write out all the messages with the information they need headers, x,y, and
+        #orientation (orientations are really important for RRT so make sure those look reasonable)
+        #Use the publish point tool and ros2 topic echo of "/clicked_point" to choose what points to use
+
+        test_conditions = {}
+
+        # short and straight line
+        start1 = PoseWithCovarianceStamped()
+        end1 = PoseStamped()
+
+        start1.pose.pose.position.x = 24.0  
+        start1.pose.pose.position.y = -1.0
+        start1.pose.pose.orientation.z = -1.0
+        start1.pose.pose.orientation.w = 0.0
+
+        end1.pose.position.x = 12.07  
+        end1.pose.position.y = -0.75  
+        end1.pose.orientation.z = 1.0
+        end1.pose.orientation.w = 0.0
+
+        test_conditions[0] = (start1, end1)
+
+        # backwards goal
+        start2 = PoseWithCovarianceStamped()
+        end2 = PoseStamped()
+
+        start2.pose.pose.position.x = 12.07
+        start2.pose.pose.position.y = -0.75
+        start2.pose.pose.orientation.z = 1.0
+        start2.pose.pose.orientation.w = 0.0
+
+        end2.pose.position.x = 24.0  
+        end2.pose.position.y = -1.0  
+        end2.pose.orientation.z = -1.0
+        end2.pose.orientation.w = 0.0
+
+        test_conditions[1] = (start2, end2)
+
+        # far away goal through narrow area
+        end3 = PoseStamped()
+
+        end3.pose.position.x = -4.5  
+        end3.pose.position.y = 23.0  
+        end3.pose.orientation.z = 0.5
+        end3.pose.orientation.w = 0.85
+
+        test_conditions[2] = (start1, end3)
+
+        # farthest point
+        end4 = PoseStamped()
+
+        end4.pose.position.x = -54.5  
+        end4.pose.position.y = 35.0  
+        end4.pose.orientation.z = 0.7
+        end4.pose.orientation.w = 0.72
+
+        test_conditions[3] = (start1, end4)
+
+        # turns
+        start3 = PoseWithCovarianceStamped()
+        end5 = PoseStamped()
+
+        start3.pose.pose.position.x = -10.0  
+        start3.pose.pose.position.y = 17.5
+        start3.pose.pose.orientation.z = 0.4
+        start3.pose.pose.orientation.w = 0.9
+
+        end5.pose.position.x = -20.0  
+        end5.pose.position.y = 29.0  
+        end5.pose.orientation.z = 0.75
+        end5.pose.orientation.w = 0.68
+
+        test_conditions[4] = (start3, end5)
+
+        conds = test_conditions[self.test_num]
+        self.num_tests = len(test_conditions)
+        
+        tester(conds[0],conds[1])
+        self.test_num+=1%self.num_tests
+
 
     def map_cb(self, msg):
         """
@@ -74,10 +186,9 @@ class PathPlan(Node):
         returns: 
         None
         """
-
         cols = msg.info.width
         rows = msg.info.height
-        self.map = np.array(msg.data).reshape((rows, cols))
+        self.map = erode_map(np.array(msg.data).reshape((rows, cols)), .4/.0504)
         
         self.get_logger().info(f"got map, shape: {self.map.shape}")
 
@@ -116,12 +227,14 @@ class PathPlan(Node):
 
     def plan_path(self, start_point, end_point, map):
         # getting start and end points 
+        self.run_counter += 1
+        start_time = time.time()
         self.get_logger().info("starting path planning")
-        self.return_start = self.transform_wtm(start_point.pose.pose.position.x, start_point.pose.pose.position.y)
+        self.return_start = transform_wtm(start_point.pose.pose.position.x, start_point.pose.pose.position.y)
         start = (int(self.return_start[0]), int(self.return_start[1]))
         self.get_logger().info(f"start point {start[0],start[1]}: {self.map[int(start[1]),int(start[0])]}")
         
-        self.return_end = self.transform_wtm(end_point.pose.position.x, end_point.pose.position.y)
+        self.return_end = transform_wtm(end_point.pose.position.x, end_point.pose.position.y)
         end = (int(self.return_end[0]), int(self.return_end[1]))
         self.get_logger().info(f"end point {end[0],end[1]}: {self.map[int(end[1]),int(end[0])]}")
 
@@ -144,6 +257,10 @@ class PathPlan(Node):
             if current_node == end:
                 # self.get_logger().info("we have a found a path and are reconstructing")
                 path = self.reconstruct_path(previous, start, end)
+                end_time = time.time()
+                runtime = end_time - start_time
+                with open('path_test.txt', 'a') as file:
+                    file.write(f'test {self.run_counter}: {runtime} \n')
                 self.publish_trajectory(path)
                 return
 
@@ -182,49 +299,6 @@ class PathPlan(Node):
 
 
     # EXTRA FUNCTIONS: 
-    def transform_mtw(self, x, y):
-
-        offsets = [25.900000, 48.50000, 3.14]
-        x_offset = offsets[0]
-        y_offset = offsets[1]
-        theta_offset = offsets[2]
-        resolution =  0.0504
-
-        #scale
-        x*=resolution
-        y*=resolution
-
-        #rotate
-        c,s = np.cos(theta_offset),np.sin(theta_offset)
-        x_temp = c*x -s*y
-        y_temp = s*x +c*y
-        x_new = x_temp + x_offset
-        y_new = y_temp +y_offset
-
-        return x_new, y_new
-
-    def transform_wtm(self, x, y):
-        """
-        Takes in x,y coordinates from world and transforms them to map scale
-        """
-        offsets = [25.900000, 48.50000, 3.14]
-        x_offset = offsets[0]
-        y_offset = offsets[1]
-        theta_offset = offsets[2]
-        resolution =  0.0504
-
-        #translate and rotate
-        temp_x = x-x_offset
-        temp_y = y-y_offset
-        c,s = np.cos(-theta_offset),np.sin(-theta_offset)
-        new_x = c*temp_x - s*temp_y
-        new_y = s*temp_x + c*temp_y
-
-        new_x/=resolution
-        new_y/=resolution
-        
-        # changed this to be ints
-        return new_x, new_y
 
     def get_neighbors(self, cell):
         '''
@@ -258,12 +332,12 @@ class PathPlan(Node):
         taking the path from the end and then going back up
         until the start
         '''
-        path = [self.transform_mtw(self.return_end[0], self.return_end[1])]
+        path = [transform_mtw(self.return_end[0], self.return_end[1])]
         current = end
         while current != start :
             current = previous[current]
-            path.append(self.transform_mtw(current[0], current[1]))
-        path.append(self.transform_mtw(self.return_start[0], self.return_start[1]))
+            path.append(transform_mtw(current[0], current[1]))
+        path.append(transform_mtw(self.return_start[0], self.return_start[1]))
         path.reverse()
         self.get_logger().info(f"{path}")
         return path
@@ -279,7 +353,70 @@ class PathPlan(Node):
             self.trajectory.publish_viz()
         else:
             self.get_logger().info("no path, sad")
-            
+    
+def erode_map(map_data, erosion_size):
+    """
+    Erode a binary occupancy grid map.
+
+    Parameters:
+    map_data: 2D numpy array representing the map. Obstacles are marked as True.
+    erosion_size: The radius of the structuring element used for erosion. Represents the size of the robot.
+
+    Returns:
+    Eroded map as a 2D numpy array.
+    """
+
+    # Create a disk-shaped structuring element for the erosion
+    structuring_element = disk(erosion_size)
+
+    # Erode the map using the structuring element
+    eroded_map = erosion(map_data, structuring_element)
+
+    return eroded_map
+
+def transform_mtw(x, y):
+
+    offsets = [25.900000, 48.50000, 3.14]
+    x_offset = offsets[0]
+    y_offset = offsets[1]
+    theta_offset = offsets[2]
+    resolution =  0.0504
+
+    #scale
+    x*=resolution
+    y*=resolution
+
+    #rotate
+    c,s = np.cos(theta_offset),np.sin(theta_offset)
+    x_temp = c*x -s*y
+    y_temp = s*x +c*y
+    x_new = x_temp + x_offset
+    y_new = y_temp +y_offset
+
+    return x_new, y_new
+
+def transform_wtm(x, y):
+    """
+    Takes in x,y coordinates from world and transforms them to map scale
+    """
+    offsets = [25.900000, 48.50000, 3.14]
+    x_offset = offsets[0]
+    y_offset = offsets[1]
+    theta_offset = offsets[2]
+    resolution =  0.0504
+
+    #translate and rotate
+    temp_x = x-x_offset
+    temp_y = y-y_offset
+    c,s = np.cos(-theta_offset),np.sin(-theta_offset)
+    new_x = c*temp_x - s*temp_y
+    new_y = s*temp_x + c*temp_y
+
+    new_x/=resolution
+    new_y/=resolution
+    
+    # changed this to be ints
+    return new_x, new_y
 
 def main(args=None):
     rclpy.init(args=args)

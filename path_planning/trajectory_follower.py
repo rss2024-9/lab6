@@ -24,7 +24,7 @@ class PurePursuit(Node):
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
 
-        self.default_lookahead = 0.90  # FILL IN #
+        self.default_lookahead = 1.5  # FILL IN #
         self.lookahead=self.default_lookahead
         self.get_logger().info(f'{self.lookahead}')
         self.speed = 1.  # FILL IN #

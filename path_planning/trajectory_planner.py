@@ -341,7 +341,7 @@ class PathPlan(Node):
             path.append(transform_mtw(current[0], current[1]))
         path.append(transform_mtw(self.return_start[0], self.return_start[1]))
         path.reverse()
-        self.get_logger().info(f"{path}")
+        # self.get_logger().info(f"{path}")
         return path
 
     def publish_trajectory(self, path):

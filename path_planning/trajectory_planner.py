@@ -42,6 +42,7 @@ class PathPlan(Node):
         self.run_counter = 0
 
         self.resolution = 0.0504
+        self.final_distance = 0
 
         with open('path_test.txt', 'w') as file:
             pass
@@ -230,6 +231,7 @@ class PathPlan(Node):
 
     def plan_path(self, start_point, end_point, map):
         # getting start and end points 
+        self.final_distance = 0
         self.run_counter += 1
         start_time = time.time()
         self.get_logger().info("starting path planning")
@@ -259,13 +261,15 @@ class PathPlan(Node):
             # if this is the last node then reconstruct the path
             if current_node == end:
                 # self.get_logger().info("we have a found a path and are reconstructing")
-                path = self.reconstruct_path(previous, start, end)
                 end_time = time.time()
+                path = self.reconstruct_path(previous, start, end)
+                self.get_logger().info(f"final_distance: {self.final_distance}")
                 runtime = end_time - start_time
                 with open('path_test.txt', 'a') as file:
                     file.write(f'test {self.run_counter}: {runtime} \n')
                     # why is this off???????
-                    file.write(f'distance {self.run_counter}: {scores[current_node]*0.0504} \n')
+                    file.write(f'distance {self.run_counter}: {self.final_distance} \n')
+                    file.write(f'actual distance {self.run_counter}: {self.distance(self.return_start, self.return_end)*self.resolution} \n')
                 self.publish_trajectory(path)
                 return
 
@@ -281,6 +285,7 @@ class PathPlan(Node):
                 neighbor_end = self.distance(neighbor, end)
                 start_neighbor = current_score + self.distance(current_node, neighbor)
                 new_score = start_neighbor + neighbor_end
+                # self.get_logger().info(f"new_score: {new_score}")
 
                 # updating distances
                 if neighbor not in scores or new_score < scores[neighbor]:
@@ -307,7 +312,10 @@ class PathPlan(Node):
         getting the possible neighbors within -1 or 1 of the current
         '''
         x, y = cell
-        neighbors = [(x + dx, y + dy) for dx in [-0.5, 0.5] for dy in [-0.5, 0.5]]
+        # neighbors = [(x + dx, y + dy) for dx in [-0.5, 0, 0.5] for dy in [-0.5, 0, 0.5] if ((dx != 0) and (dy != 0)) ]
+        neighbors_x = [(x + dx, y) for dx in [-0.5, 0.5]]
+        neighbors_y = [(x, y + dy) for dy in [-0.5, 0.5]]
+        neighbors = neighbors_x + neighbors_y
         valid_neighbors = filter(self.is_valid_cell, neighbors)
         return valid_neighbors
 
@@ -334,6 +342,7 @@ class PathPlan(Node):
         taking the path from the end and then going back up
         until the start
         '''
+
         path = [transform_mtw(self.return_end[0], self.return_end[1])]
         current = end
         while current != start :
@@ -341,6 +350,10 @@ class PathPlan(Node):
             path.append(transform_mtw(current[0], current[1]))
         path.append(transform_mtw(self.return_start[0], self.return_start[1]))
         path.reverse()
+        for index in range(0, len(path)-1):
+            before = path[index]
+            after = path[index + 1]
+            self.final_distance += self.distance(before, after)
         # self.get_logger().info(f"{path}")
         return path
 

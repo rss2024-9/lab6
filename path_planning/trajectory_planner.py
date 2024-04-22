@@ -9,6 +9,8 @@ from .tree import *
 import numpy as np
 from tf_transformations import euler_from_quaternion
 
+import time
+
 
 
 class PathPlan(Node):
@@ -35,6 +37,10 @@ class PathPlan(Node):
         self.goal_pose = None
         self.goal_node = None
         self.tree=[]
+
+        self.run_counter = 0
+        with open('sample_path_test.txt', 'w') as file:
+            pass
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -97,27 +103,93 @@ class PathPlan(Node):
 
     def test_node(self,msg):
         """
-        When a point is clicked it starts the next test in the queue, karen you can change how this works if you
-        want this was just my initial idea of how to test stuff
+        When a point is clicked it starts the next test in the queue
         """
         def tester(start,end):
             """
             Publish initial positions and goal positions to test path planner
             """
             self.get_logger().info(f"starting test: {self.test_num/self.num_tests}")
-            self.initial_pub(start)
-            self.goal_pub(end)
+            self.initial_pub.publish(start)
+            self.goal_pub.publish(end)
 
         #!TODO continue adding cases
         #write out all the messages with the information they need headers, x,y, and
         #orientation (orientations are really important for RRT so make sure those look reasonable)
         #Use the publish point tool and ros2 topic echo of "/clicked_point" to choose what points to use
-        msg1 = PoseWithCovarianceStamped()
-        msg2 = PoseStamped()
 
+        test_conditions = {}
 
-        test_conditions = {0:(msg1,msg2)}
+        # short and straight line
+        start1 = PoseWithCovarianceStamped()
+        end1 = PoseStamped()
+
+        start1.pose.pose.position.x = 24.0  
+        start1.pose.pose.position.y = -1.0
+        start1.pose.pose.orientation.z = -1.0
+        start1.pose.pose.orientation.w = 0.0
+
+        end1.pose.position.x = 12.07  
+        end1.pose.position.y = -0.75  
+        end1.pose.orientation.z = 1.0
+        end1.pose.orientation.w = 0.0
+
+        test_conditions[0] = (start1, end1)
+
+        # backwards goal
+        start2 = PoseWithCovarianceStamped()
+        end2 = PoseStamped()
+
+        start2.pose.pose.position.x = 12.07
+        start2.pose.pose.position.y = -0.75
+        start2.pose.pose.orientation.z = 1.0
+        start2.pose.pose.orientation.w = 0.0
+
+        end2.pose.position.x = 24.0  
+        end2.pose.position.y = -1.0  
+        end2.pose.orientation.z = -1.0
+        end2.pose.orientation.w = 0.0
+
+        test_conditions[1] = (start2, end2)
+
+        # far away goal through narrow area
+        end3 = PoseStamped()
+
+        end3.pose.position.x = -4.5  
+        end3.pose.position.y = 23.0  
+        end3.pose.orientation.z = 0.5
+        end3.pose.orientation.w = 0.85
+
+        test_conditions[2] = (start1, end3)
+
+        # farthest point
+        end4 = PoseStamped()
+
+        end4.pose.position.x = -54.5  
+        end4.pose.position.y = 35.0  
+        end4.pose.orientation.z = 0.7
+        end4.pose.orientation.w = 0.72
+
+        test_conditions[3] = (start1, end4)
+
+        # turns
+        start3 = PoseWithCovarianceStamped()
+        end5 = PoseStamped()
+
+        start3.pose.pose.position.x = -10.0  
+        start3.pose.pose.position.y = 17.5
+        start3.pose.pose.orientation.z = 0.4
+        start3.pose.pose.orientation.w = 0.9
+
+        end5.pose.position.x = -20.0  
+        end5.pose.position.y = 29.0  
+        end5.pose.orientation.z = 0.75
+        end5.pose.orientation.w = 0.68
+
+        test_conditions[4] = (start3, end5)
+
         conds = test_conditions[self.test_num]
+        self.num_tests = len(test_conditions)
         
         tester(conds[0],conds[1])
         self.test_num+=1%self.num_tests
@@ -156,7 +228,7 @@ class PathPlan(Node):
         pose - PoseWithCovarianceStamped
         """
         #have return here so it doesn't start doing anything when everything works together
-        return
+        #return
         self.start_pose = pose
         self.get_logger().info("got initial pose")
         if self.goal_pose is not None and self.map_data is not None:
@@ -251,6 +323,8 @@ class PathPlan(Node):
         map - 2D np array
 
         """
+        self.run_counter += 1
+        start_time = time.time()
         self.get_logger().info("starting path planning")
         path=False
 
@@ -326,6 +400,12 @@ class PathPlan(Node):
         if path:
             self.get_logger().info(f"path planned woohoo, needed {_} iterations")
             path = create_path(self.goal_node)
+            end_time = time.time()
+            runtime = end_time - start_time
+            with open('sample_path_test.txt', 'a') as file:
+                file.write(f'test {self.run_counter}: {runtime} \n')
+                # why is this off???????
+                file.write(f'distance {self.run_counter}: {end_point.cost*0.0504} \n')
             for coords in path:
                 self.trajectory.addPoint(coords)
             self.traj_pub.publish(self.trajectory.toPoseArray())

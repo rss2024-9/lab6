@@ -312,10 +312,10 @@ class PathPlan(Node):
         getting the possible neighbors within -1 or 1 of the current
         '''
         x, y = cell
-        # neighbors = [(x + dx, y + dy) for dx in [-0.5, 0, 0.5] for dy in [-0.5, 0, 0.5] if ((dx != 0) and (dy != 0)) ]
-        neighbors_x = [(x + dx, y) for dx in [-0.5, 0.5]]
-        neighbors_y = [(x, y + dy) for dy in [-0.5, 0.5]]
-        neighbors = neighbors_x + neighbors_y
+        neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if ((dx != 0) or (dy != 0)) ]
+        #neighbors_x = [(x + dx, y) for dx in [-0.5, 0.5]]
+        #neighbors_y = [(x, y + dy) for dy in [-0.5, 0.5]]
+        #neighbors = neighbors_x + neighbors_y
         valid_neighbors = filter(self.is_valid_cell, neighbors)
         return valid_neighbors
 

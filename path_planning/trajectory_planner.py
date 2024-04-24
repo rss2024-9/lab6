@@ -207,6 +207,20 @@ class PathPlan(Node):
         height = msg.info.height
         self.map_data = erode_map(np.array(msg.data).reshape(height,width),.4/.0504)
 
+
+        # Convert the eroded map back to a 1D list
+        #eroded_map_list = (self.map_data.flatten() * 100).astype(int).tolist()
+
+        # Create a new OccupancyGrid message
+        #eroded_map_msg = OccupancyGrid()
+
+        # Set the data field to the eroded map list
+        #eroded_map_msg.data = eroded_map_list
+
+        # Set the info field to the original map's info
+        #eroded_map_msg.info = msg.info
+
+        #self.map_pub.publish(eroded_map_msg)
         
        
 

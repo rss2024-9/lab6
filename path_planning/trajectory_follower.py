@@ -27,7 +27,7 @@ class PurePursuit(Node):
         self.default_lookahead = 0.90  # FILL IN #
         self.lookahead=self.default_lookahead
         self.get_logger().info(f'{self.lookahead}')
-        self.speed = 1.  # FILL IN #
+        self.speed = 4.  # FILL IN #
         self.wheelbase_length = 0.3  # FILL IN #
 
         self.trajectory = LineTrajectory("/followed_trajectory")
@@ -38,8 +38,8 @@ class PurePursuit(Node):
                                                1)
         
         #subscribe to particle filter localization #turn back on for real car
-        #self.pose_sub = self.create_subscription(Odometry,"/pf/pose/odom",self.pose_callback, 1)
-        self.pose_sub = self.create_subscription(Odometry,"/odom",self.pose_callback, 1)   
+        self.pose_sub = self.create_subscription(Odometry,"/pf/pose/odom",self.pose_callback, 1)
+        #self.pose_sub = self.create_subscription(Odometry,"/odom",self.pose_callback, 1)   
 
         #viz target point
         self.viz_pub = self.create_publisher(PoseArray, "/target_point", 1) 
@@ -225,7 +225,7 @@ class PurePursuit(Node):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
         self.trajectory.clear()
-        self.speed=1.0
+        self.speed=4.0
         self.trajectory.fromPoseArray(msg)
         self.trajectory.publish_viz(duration=0.0)
 

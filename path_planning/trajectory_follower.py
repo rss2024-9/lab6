@@ -38,8 +38,8 @@ class PurePursuit(Node):
                                                1)
         
         #subscribe to particle filter localization #turn back on for real car
-        self.pose_sub = self.create_subscription(Odometry,"/pf/pose/odom",self.pose_callback, 1)
-        #self.pose_sub = self.create_subscription(Odometry,"/odom",self.pose_callback, 1)   
+        #self.pose_sub = self.create_subscription(Odometry,"/pf/pose/odom",self.pose_callback, 1)
+        self.pose_sub = self.create_subscription(Odometry,"/odom",self.pose_callback, 1)   
 
         #viz target point
         self.viz_pub = self.create_publisher(PoseArray, "/target_point", 1) 
@@ -97,11 +97,11 @@ class PurePursuit(Node):
         #find the centerline distance from the current segment for data
         centerline_distance = self.find_centerline_dist(p1,p2,car_xy_pos)
         self.lookahead = max(np.min(nrst_distances),self.default_lookahead)
-        # Open a file in write mode
-        # current_time = (time.time()-self.t0)
-        # with open("centerline_data.txt", "a") as file:
-        #     # Write each item from the data list to the file
-        #     file.write(f"{centerline_distance},{current_time}\n")
+        #Open a file in write mode
+        current_time = (time.time()-self.t0)
+        with open("centerline_data.txt", "a") as file:
+            # Write each item from the data list to the file
+            file.write(f"{centerline_distance},{current_time}\n")
     
         #if the car is so close to the end look to the next
         dist_from_end = np.linalg.norm(car_xy_pos-p2)
@@ -225,6 +225,7 @@ class PurePursuit(Node):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
         self.trajectory.clear()
+        self.speed=1.0
         self.trajectory.fromPoseArray(msg)
         self.trajectory.publish_viz(duration=0.0)
 

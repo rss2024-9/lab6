@@ -8,6 +8,7 @@ from .utils import LineTrajectory
 from .tree import *
 import numpy as np
 from tf_transformations import euler_from_quaternion
+import time
 
 
 
@@ -35,6 +36,9 @@ class PathPlan(Node):
         self.goal_pose = None
         self.goal_node = None
         self.tree=[]
+        self.run_counter = 0
+        with open('sample_path_test.txt', 'w') as file:
+            pass
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -105,22 +109,87 @@ class PathPlan(Node):
             Publish initial positions and goal positions to test path planner
             """
             self.get_logger().info(f"starting test: {self.test_num/self.num_tests}")
-            self.initial_pub(start)
-            self.goal_pub(end)
+            self.initial_pub.publish(start)
+            self.goal_pub.publish(end)
 
         #!TODO continue adding cases
         #write out all the messages with the information they need headers, x,y, and
         #orientation (orientations are really important for RRT so make sure those look reasonable)
         #Use the publish point tool and ros2 topic echo of "/clicked_point" to choose what points to use
-        msg1 = PoseWithCovarianceStamped()
-        msg2 = PoseStamped()
+        test_conditions = {}
 
+        # short and straight line
+        start1 = PoseWithCovarianceStamped()
+        end1 = PoseStamped()
 
-        test_conditions = {0:(msg1,msg2)}
+        start1.pose.pose.position.x = 24.0  
+        start1.pose.pose.position.y = -1.0
+        start1.pose.pose.orientation.z = -1.0
+        start1.pose.pose.orientation.w = 0.0
+
+        end1.pose.position.x = 12.07  
+        end1.pose.position.y = -0.75  
+        end1.pose.orientation.z = 1.0
+        end1.pose.orientation.w = 0.0
+
+        test_conditions[0] = (start1, end1)
+
+        # backwards goal
+        start2 = PoseWithCovarianceStamped()
+        end2 = PoseStamped()
+
+        start2.pose.pose.position.x = 12.07
+        start2.pose.pose.position.y = -0.75
+        start2.pose.pose.orientation.z = 1.0
+        start2.pose.pose.orientation.w = 0.0
+
+        end2.pose.position.x = 24.0  
+        end2.pose.position.y = -1.0  
+        end2.pose.orientation.z = -1.0
+        end2.pose.orientation.w = 0.0
+
+        test_conditions[1] = (start2, end2)
+
+        # far away goal through narrow area
+        end3 = PoseStamped()
+
+        end3.pose.position.x = -4.5  
+        end3.pose.position.y = 23.0  
+        end3.pose.orientation.z = 0.5
+        end3.pose.orientation.w = 0.85
+
+        test_conditions[2] = (start1, end3)
+
+        # farthest point
+        end4 = PoseStamped()
+
+        end4.pose.position.x = -54.5  
+        end4.pose.position.y = 35.0  
+        end4.pose.orientation.z = 0.7
+        end4.pose.orientation.w = 0.72
+
+        test_conditions[3] = (start1, end4)
+
+        # turns
+        start3 = PoseWithCovarianceStamped()
+        end5 = PoseStamped()
+
+        start3.pose.pose.position.x = -10.0  
+        start3.pose.pose.position.y = 17.5
+        start3.pose.pose.orientation.z = 0.4
+        start3.pose.pose.orientation.w = 0.9
+
+        end5.pose.position.x = -20.0  
+        end5.pose.position.y = 29.0  
+        end5.pose.orientation.z = 0.75
+        end5.pose.orientation.w = 0.68
+
+        test_conditions[4] = (start3, end5)
         conds = test_conditions[self.test_num]
-        
+        self.num_tests = len(test_conditions)
         tester(conds[0],conds[1])
-        self.test_num+=1%self.num_tests
+        self.test_num+=1
+        self.test_num%=self.num_tests
 
 
 
@@ -137,6 +206,9 @@ class PathPlan(Node):
         width = msg.info.width
         height = msg.info.height
         self.map_data = erode_map(np.array(msg.data).reshape(height,width),.4/.0504)
+
+        
+       
 
         zero_indices = np.where(self.map_data == 0)
 
@@ -156,7 +228,7 @@ class PathPlan(Node):
         pose - PoseWithCovarianceStamped
         """
         #have return here so it doesn't start doing anything when everything works together
-        return
+        #return
         self.start_pose = pose
         self.get_logger().info("got initial pose")
         if self.goal_pose is not None and self.map_data is not None:
@@ -208,7 +280,7 @@ class PathPlan(Node):
         # Return the nearest TreeNode
         return self.tree[nearest_index]
     
-    def is_collision_free(self, p1, p2):
+    def is_collision_free(self, p1, p2,ret_path = False):
         # Check if the path between p1 and p2 is free of obstacles
 
         # Convert the poses to grid coordinates
@@ -223,9 +295,11 @@ class PathPlan(Node):
 
         # Check if any of the cells in the path are occupied using vectorized comparison
         occupied_cells = self.map_data[configs_np[:, 1], configs_np[:, 0]] != 0
-
-        # If any cell in the path is occupied, return False, otherwise return True
-        return not np.any(occupied_cells)
+        if not ret_path:
+            # If any cell in the path is occupied, return False, otherwise return True
+            return not np.any(occupied_cells)
+        else:
+            return (not np.any(occupied_cells), configs)
     
     def get_random_point(self):
         """
@@ -243,7 +317,42 @@ class PathPlan(Node):
 
         return TreeNode(float(x),float(y),theta)
     
-    def plan_path(self, start_point, end_point, goal_sample_rate = 0.3,step_size=.45/0.0504,max_iter=25000,rewire_radius = 1/0.0504):
+    def new_state(self, q_nearest, q_rand, step_size,turning_radius=turning_rad/resolution):
+        """ 
+        Create a new point in the direction of p2 from p1 with distance delta
+        params:
+        q_nearest - TreeNode
+        q_rand - TreeNode
+        step_size - float
+        returns: TreeNode
+        """
+        # distance = euclidean_distance(q_nearest, q_rand)
+        # if distance <= step_size:
+        #     return q_rand
+        # else:
+        #     direction = np.array([q_rand.x,q_rand.y]) - np.array([q_nearest.x,q_nearest.y])
+        #     direction /= distance
+        #     new_point = np.array([q_nearest.x,q_nearest.y]) + direction * step_size
+        #     return TreeNode(new_point[0],new_point[1],np.random.uniform(0,np.pi*2))
+        
+        path = dubins.shortest_path((q_nearest.x, q_nearest.y, q_nearest.theta), 
+                                    (q_rand.x, q_rand.y, q_rand.theta), 
+                                    turning_radius)
+        new_points, _ = path.sample_many(step_size)
+        #print(f"x:{q_nearest.x == new_points[0][0]}, y:{q_nearest.y == new_points[0][1]}, theta:{q_nearest.theta == new_points[0][2]}, ")
+        #in case of short path
+        ix=1
+        point = (q_rand.x,q_rand.y,q_rand.theta)
+        points=[]
+        
+        while ix<len(new_points) and (self.map_data[int(new_points[ix][1]),int(new_points[ix][0])] == 0):
+            point = new_points[ix]
+            points.append(point)
+            ix+=1
+        
+        return points
+    
+    def plan_path(self, start_point, end_point, goal_sample_rate = 0.3,step_size=.45/0.0504,max_iter=4000,rewire_radius = 1/0.0504):
         """
         params:
         start_point - PoseWithCovarianceStamped
@@ -251,6 +360,8 @@ class PathPlan(Node):
         map - 2D np array
 
         """
+        self.run_counter += 1
+        start_time = time.time()
         self.get_logger().info("starting path planning")
         path=False
 
@@ -279,9 +390,32 @@ class PathPlan(Node):
         
         self.tree = [TreeNode(*start_point)]
         goal_offset = .5*step_size
+
+        #check straight line
+        has_straight_path, straight_path= self.is_collision_free(self.tree[0],end_point,ret_path=True)
+        if has_straight_path:
+            for coords in straight_path:
+                new_x,new_y = transform_mtw(coords[0],coords[1])
+                self.trajectory.addPoint((new_x,new_y))
+            end_time = time.time()
+            runtime = end_time - start_time
+            path_length = 0
+            for ix,coords in enumerate(straight_path):
+                if ix<len(straight_path)-1:
+                    path_length +=np.linalg.norm(np.array([coords[0],coords[1]]) - np.array([straight_path[ix+1][0],straight_path[ix+1][1]]))
+            with open('sample_path_test.txt', 'a') as file:
+                file.write(f'test {self.run_counter}: {runtime} \n')
+                # why is this off???????
+                file.write(f'distance {self.run_counter}: {path_length*0.0504} \n')
+            self.traj_pub.publish(self.trajectory.toPoseArray())
+            self.trajectory.publish_viz()
+            return
+
+
         
         for _ in range(max_iter):
             
+           
             
             #every once in a while just try to go towards goal point, helps focus search
             if np.random.random() < goal_sample_rate:
@@ -298,34 +432,52 @@ class PathPlan(Node):
             q_near = self.get_nearest_point(q_rand)
             
             #create new node with nearest node as its parent and input its cost
-            q_new = new_state(q_near, q_rand, step_size)
-            new_cost = q_near.cost + cost_func(q_near, q_new)
-            q_new.update_parent(q_near)
-            q_new.update_cost(new_cost)
+            # q_new = self.new_state(q_near, q_rand, step_size)
+            # new_cost = q_near.cost + cost_func(q_near, q_new)
+            # q_new.update_parent(q_near)
+            # q_new.update_cost(new_cost)
+
+            q_news = self.new_state(q_near, q_rand, step_size)
+            prev = q_near
+            for point in q_news:
+                
+                new_node = TreeNode(*point,parent = prev)
+                new_node.update_cost(prev.cost+cost_func(prev,new_node))
+                prev = new_node
+                self.tree.append(new_node)
+
             
             #add new nodes to tree if the move is possible
-            if self.is_collision_free(q_near, q_new):
+            for indx in range( len(q_news)):
                 #self.get_logger().info("in append stage")
                 #near_nodes = [node for node in tree if cost_func(node, q_new) < rewire_radius]
-                self.tree.append(q_new)
+                #self.tree.append(q_new)
                 #update tree to retain optimal paths
                 #rewire(tree, q_new, near_nodes, step_size, self.map_data)
-
+                newest = self.tree[-1-indx]
                 #if goal is within reach, just go to goal and return path
-                if cost_func(q_new, end_point) <= step_size:
+                if cost_func(newest, end_point) <= step_size:
                     self.goal_node = end_point
                     goal_node = end_point
-                    goal_node.parent = q_new
-                    goal_node.cost = q_new.cost + cost_func(q_new, end_point)
+                    goal_node.parent = newest
+                    goal_node.cost = newest.cost + cost_func(newest, end_point)
                     self.tree.append(goal_node)
                     #rewire(tree, goal_node, [q_new], step_size, self.map_data)
                     path = True
                     break
+            if path:
+                break
 
 
         if path:
             self.get_logger().info(f"path planned woohoo, needed {_} iterations")
             path = create_path(self.goal_node)
+            end_time = time.time()
+            runtime = end_time - start_time
+            with open('sample_path_test.txt', 'a') as file:
+                file.write(f'test {self.run_counter}: {runtime} \n')
+                # why is this off???????
+                file.write(f'distance {self.run_counter}: {end_point.cost*0.0504} \n')
             for coords in path:
                 self.trajectory.addPoint(coords)
             self.traj_pub.publish(self.trajectory.toPoseArray())

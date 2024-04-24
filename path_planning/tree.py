@@ -108,35 +108,35 @@ def get_random_point(map):
 #     return tree[nearest_index]
     
 
-def new_state( q_nearest, q_rand, step_size,turning_radius=turning_rad/resolution):
-    """ 
-    Create a new point in the direction of p2 from p1 with distance delta
-    params:
-    q_nearest - TreeNode
-    q_rand - TreeNode
-    step_size - float
-    returns: TreeNode
-    """
-    # distance = euclidean_distance(q_nearest, q_rand)
-    # if distance <= step_size:
-    #     return q_rand
-    # else:
-    #     direction = np.array([q_rand.x,q_rand.y]) - np.array([q_nearest.x,q_nearest.y])
-    #     direction /= distance
-    #     new_point = np.array([q_nearest.x,q_nearest.y]) + direction * step_size
-    #     return TreeNode(new_point[0],new_point[1],np.random.uniform(0,np.pi*2))
+# def new_state( q_nearest, q_rand, step_size,turning_radius=turning_rad/resolution):
+#     """ 
+#     Create a new point in the direction of p2 from p1 with distance delta
+#     params:
+#     q_nearest - TreeNode
+#     q_rand - TreeNode
+#     step_size - float
+#     returns: TreeNode
+#     """
+#     # distance = euclidean_distance(q_nearest, q_rand)
+#     # if distance <= step_size:
+#     #     return q_rand
+#     # else:
+#     #     direction = np.array([q_rand.x,q_rand.y]) - np.array([q_nearest.x,q_nearest.y])
+#     #     direction /= distance
+#     #     new_point = np.array([q_nearest.x,q_nearest.y]) + direction * step_size
+#     #     return TreeNode(new_point[0],new_point[1],np.random.uniform(0,np.pi*2))
     
-    path = dubins.shortest_path((q_nearest.x, q_nearest.y, q_nearest.theta), 
-                                (q_rand.x, q_rand.y, q_rand.theta), 
-                                turning_radius)
-    new_points, _ = path.sample_many(step_size)
-    #print(f"x:{q_nearest.x == new_points[0][0]}, y:{q_nearest.y == new_points[0][1]}, theta:{q_nearest.theta == new_points[0][2]}, ")
-    #in case of short path
-    if len(new_points) >=2:
-        point = new_points[1] 
-    else:
-        point = (q_rand.x,q_rand.y,q_rand.theta)
-    return TreeNode(*point)
+#     path = dubins.shortest_path((q_nearest.x, q_nearest.y, q_nearest.theta), 
+#                                 (q_rand.x, q_rand.y, q_rand.theta), 
+#                                 turning_radius)
+#     new_points, _ = path.sample_many(step_size)
+#     #print(f"x:{q_nearest.x == new_points[0][0]}, y:{q_nearest.y == new_points[0][1]}, theta:{q_nearest.theta == new_points[0][2]}, ")
+#     #in case of short path
+#     if len(new_points) >=2:
+#         point = new_points[1] 
+#     else:
+#         point = (q_rand.x,q_rand.y,q_rand.theta)
+#     return TreeNode(*point)
     
 
 # def is_collision_free( p1, p2, map):

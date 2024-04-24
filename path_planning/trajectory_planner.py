@@ -282,8 +282,9 @@ class PathPlan(Node):
                     continue
 
                 # f-score is distance to neighbor + neighbor to end
-                neighbor_end = self.distance(neighbor, end)
-                start_neighbor = current_score + self.distance(current_node, neighbor)
+                #neighbor_end = self.distance(neighbor, end)
+                neighbor_end = self.manhattan(neighbor, end)
+                start_neighbor = current_score + self.manhattan(current_node, neighbor)
                 new_score = start_neighbor + neighbor_end
                 # self.get_logger().info(f"new_score: {new_score}")
 
@@ -336,6 +337,22 @@ class PathPlan(Node):
         x1, y1 = cell1
         x2, y2 = cell2
         return np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    
+    def manhattan(self, cell1, cell2):
+        '''
+        manhattan distance heuristic for a star
+        '''
+        x1, y1 = cell1
+        x2, y2 = cell2
+        return abs(x2 - x1) + abs(y2 - y1)
+
+    def chebyshev(self, cell1, cell2):
+        '''
+        manhattan distance heuristic for a star
+        '''
+        x1, y1 = cell1
+        x2, y2 = cell2
+        return max(abs(x2 - x1), abs(y2 - y1))
 
     def reconstruct_path(self, previous, start, end):
         '''

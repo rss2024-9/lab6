@@ -6,7 +6,8 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray,
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
 
-from skimage.morphology import erosion, disk
+from skimage.morphology import erosion, disk, dilation
+from skimage.measure import block_reduce
 import numpy as np
 import heapq
 import pdb
@@ -43,6 +44,9 @@ class PathPlan(Node):
 
         self.resolution = 0.0504
         self.final_distance = 0
+        self.POOL_SIZE = 5
+        self.EROSION_SIZE = 7
+        self.DILATION_SIZE = 10
 
         with open('path_test.txt', 'w') as file:
             pass
@@ -192,7 +196,12 @@ class PathPlan(Node):
         """
         cols = msg.info.width
         rows = msg.info.height
-        self.map = erode_map(np.array(msg.data).reshape((rows, cols)), .4/.0504)
+        pool_size = (self.POOL_SIZE, self.POOL_SIZE)
+        # map = erode_map(np.array(msg.data).reshape((rows, cols)), .4/.0504)
+        # map = dilate_map(erode_map(np.array(msg.data).reshape((rows, cols)), self.EROSION_SIZE), self.DILATION_SIZE)
+        map = erode_map(dilate_map(np.array(msg.data).reshape((rows, cols)), self.DILATION_SIZE), self.EROSION_SIZE)
+        self.map = block_reduce(map, pool_size, np.max)
+
         
         self.get_logger().info(f"got map, shape: {self.map.shape}")
 
@@ -235,12 +244,16 @@ class PathPlan(Node):
         self.run_counter += 1
         start_time = time.time()
         self.get_logger().info("starting path planning")
+
+        # may have to deal with downsampling here too
         self.return_start = transform_wtm(start_point.pose.pose.position.x, start_point.pose.pose.position.y)
-        start = (int(self.return_start[0]), int(self.return_start[1]))
+        #self.return_start = (self.return_start[0]/self.POOL_SIZE, self.return_start[1]/self.POOL_SIZE)
+        start = (int(self.return_start[0]/self.POOL_SIZE), int(self.return_start[1]/self.POOL_SIZE))
         self.get_logger().info(f"start point {start[0],start[1]}: {self.map[int(start[1]),int(start[0])]}")
         
         self.return_end = transform_wtm(end_point.pose.position.x, end_point.pose.position.y)
-        end = (int(self.return_end[0]), int(self.return_end[1]))
+        #self.return_end = (self.return_end[0]/self.POOL_SIZE, self.return_end[1]/self.POOL_SIZE)
+        end = (int(self.return_end[0]/self.POOL_SIZE), int(self.return_end[1]/self.POOL_SIZE))
         self.get_logger().info(f"end point {end[0],end[1]}: {self.map[int(end[1]),int(end[0])]}")
 
 
@@ -313,7 +326,7 @@ class PathPlan(Node):
         getting the possible neighbors within -1 or 1 of the current
         '''
         x, y = cell
-        neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if ((dx != 0) or (dy != 0)) ]
+        neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if (((dx != 0) or (dy != 0))) ]
         #neighbors_x = [(x + dx, y) for dx in [-0.5, 0.5]]
         #neighbors_y = [(x, y + dy) for dy in [-0.5, 0.5]]
         #neighbors = neighbors_x + neighbors_y
@@ -364,7 +377,7 @@ class PathPlan(Node):
         current = end
         while current != start :
             current = previous[current]
-            path.append(transform_mtw(current[0], current[1]))
+            path.append(transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE))
         path.append(transform_mtw(self.return_start[0], self.return_start[1]))
         path.reverse()
         for index in range(0, len(path)-1):
@@ -405,6 +418,26 @@ def erode_map(map_data, erosion_size):
     eroded_map = erosion(map_data, structuring_element)
 
     return eroded_map
+
+def dilate_map(map_data, dilation_size):
+    """
+    dilate a binary occupancy grid map.
+
+    Parameters:
+    map_data: 2D numpy array representing the map. Obstacles are marked as True.
+    erosion_size: The radius of the structuring element used for dilation. Represents the size of the robot.
+
+    Returns:
+    dilated map as a 2D numpy array.
+    """
+
+    # Create a disk-shaped structuring element for the erosion
+    structuring_element = disk(dilation_size)
+
+    # Erode the map using the structuring element
+    dilated_map = dilation(map_data, structuring_element)
+
+    return dilated_map
 
 def transform_mtw(x, y):
 

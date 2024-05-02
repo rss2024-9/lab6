@@ -12,6 +12,10 @@ import numpy as np
 import heapq
 import pdb
 import time
+import dubins
+from tf_transformations import euler_from_quaternion
+
+
 
 
 class PathPlan(Node):
@@ -41,12 +45,18 @@ class PathPlan(Node):
         self.test_num = 0
         self.num_tests = 8
         self.run_counter = 0
-
-        self.resolution = 0.0504
         self.final_distance = 0
+
+        self.start_theta = None
+        self.end_theta = None
+
+
+        self.RESOLUTION = 0.0504
         self.POOL_SIZE = 5
         self.EROSION_SIZE = 7
         self.DILATION_SIZE = 10
+        self.TURNING_RAD = 0.848
+        self.THRESHOLD_ANGLE = 3.141
 
         with open('path_test.txt', 'w') as file:
             pass
@@ -245,13 +255,22 @@ class PathPlan(Node):
         start_time = time.time()
         self.get_logger().info("starting path planning")
 
+        quaternion = start_point.pose.pose.orientation
+        # Convert the quaternion to Euler angles (roll, pitch, yaw)
+        (_, _, yaw) = euler_from_quaternion([quaternion.x, quaternion.y, quaternion.z, quaternion.w])
+        self.start_theta = yaw
+
+        quaternion = end_point.pose.orientation
+        (_, _, yaw) = euler_from_quaternion([quaternion.x, quaternion.y, quaternion.z, quaternion.w])
+        self.end_theta = yaw
+
         # may have to deal with downsampling here too
-        self.return_start = transform_wtm(start_point.pose.pose.position.x, start_point.pose.pose.position.y)
+        self.return_start = transform_wtm(start_point.pose.pose.position.x, start_point.pose.pose.position.y, self.start_theta)
         #self.return_start = (self.return_start[0]/self.POOL_SIZE, self.return_start[1]/self.POOL_SIZE)
         start = (int(self.return_start[0]/self.POOL_SIZE), int(self.return_start[1]/self.POOL_SIZE))
         self.get_logger().info(f"start point {start[0],start[1]}: {self.map[int(start[1]),int(start[0])]}")
         
-        self.return_end = transform_wtm(end_point.pose.position.x, end_point.pose.position.y)
+        self.return_end = transform_wtm(end_point.pose.position.x, end_point.pose.position.y, self.end_theta)
         #self.return_end = (self.return_end[0]/self.POOL_SIZE, self.return_end[1]/self.POOL_SIZE)
         end = (int(self.return_end[0]/self.POOL_SIZE), int(self.return_end[1]/self.POOL_SIZE))
         self.get_logger().info(f"end point {end[0],end[1]}: {self.map[int(end[1]),int(end[0])]}")
@@ -259,7 +278,8 @@ class PathPlan(Node):
 
         if not self.is_valid_cell(start) or not self.is_valid_cell(end):
             self.get_logger().warn("invalid start or goal point")
-            return
+            return        
+
 
         visited = set()
         scores = {start: 0}
@@ -275,14 +295,26 @@ class PathPlan(Node):
             if current_node == end:
                 # self.get_logger().info("we have a found a path and are reconstructing")
                 end_time = time.time()
+
                 path = self.reconstruct_path(previous, start, end)
+                if self.backwards_check(start, end):
+                    self.get_logger().info(f"BACKWARDS AHHHHHHHHHHHHHHHHHHH")
+                    turning_radius = self.TURNING_RAD / self.RESOLUTION /self.POOL_SIZE # turning radius divided by resolution
+                    second_point = transform_wtm(path[5][0], path[5][1], 0)
+                    extra_path, _ = dubins.shortest_path((start[0], start[1], self.return_start[2]), (second_point[0]//self.POOL_SIZE, 
+                                                        second_point[1]//self.POOL_SIZE, -self.return_start[2]), turning_radius).sample_many(.25 / self.RESOLUTION)
+                    self.get_logger().info(f"DUBINS DEBUG start:{start}, path: {second_point[0], second_point[1]} theta: {self.start_theta}")
+                    self.get_logger().info(f"DUBINS DEBUG: extra_path:{extra_path[0]} {extra_path[-1]}")
+                    extra_path = self.reconstruct_path(previous, start, end, dubin=True, dubin_path = extra_path)
+                    self.get_logger().info(f"DUBINS DEBUG: extra_path:{extra_path[0]} {extra_path[-1]}")
+                    path = extra_path + path[5:]
+
                 self.get_logger().info(f"final_distance: {self.final_distance}")
                 runtime = end_time - start_time
                 with open('path_test.txt', 'a') as file:
                     file.write(f'test {self.run_counter}: {runtime} \n')
-                    # why is this off???????
                     file.write(f'distance {self.run_counter}: {self.final_distance} \n')
-                    file.write(f'actual distance {self.run_counter}: {self.distance(self.return_start, self.return_end)*self.resolution} \n')
+                    file.write(f'actual distance {self.run_counter}: {self.distance(self.return_start[:2], self.return_end[:2])*self.RESOLUTION} \n')
                 self.publish_trajectory(path)
                 return
 
@@ -306,15 +338,6 @@ class PathPlan(Node):
                     scores[neighbor] = new_score
                     previous[neighbor] = current_node
                     heapq.heappush(queue, (new_score, neighbor))
-
-                # checking if within a stepsize and moving there (since almost impossible to get exact endpoint)
-                # this does not guarantee an optimal path 
-                # if neighbor_end <= self.step_size:
-                #     scores[end] = float("-inf")
-                #     previous[end] = neighbor
-                #     heapq.heappush(queue, (scores[end], end))
-                #     self.get_logger().info("forcing path to end")
-                #     break
         
         self.get_logger().info("outside of while loop")
 
@@ -367,7 +390,7 @@ class PathPlan(Node):
         x2, y2 = cell2
         return max(abs(x2 - x1), abs(y2 - y1))
 
-    def reconstruct_path(self, previous, start, end):
+    def reconstruct_path(self, previous, start, end, dubin = False, dubin_path = None):
         '''
         taking the path from the end and then going back up
         until the start
@@ -380,6 +403,10 @@ class PathPlan(Node):
             path.append(transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE))
         path.append(transform_mtw(self.return_start[0], self.return_start[1]))
         path.reverse()
+        if dubin:
+            path = [transform_mtw(self.return_start[0], self.return_start[1])]
+            for point in dubin_path:
+                path.append(transform_mtw(point[0]*self.POOL_SIZE, point[1]*self.POOL_SIZE))
         for index in range(0, len(path)-1):
             before = path[index]
             after = path[index + 1]
@@ -398,6 +425,61 @@ class PathPlan(Node):
             self.trajectory.publish_viz()
         else:
             self.get_logger().info("no path, sad")
+    
+    def is_collision_free(self, p1, p2, t1, ret_path = False):
+        # Check if the path between p1 and p2 is free of obstacles
+
+        # Convert the poses to grid coordinates
+        
+        turning_radius = self.TURNING_RAD / self.RESOLUTION  # turning radius divided by resolution
+        configs, _ = dubins.shortest_path((p1[0], p1[1], t1), (p2[0], p2[1], -t1), turning_radius).sample_many(.25 / .0504)
+        # Append target cell to configs
+        configs.append((p2[0], p2[1], -t1))
+
+        # Convert configs to NumPy array for vectorized operations
+        configs_np = np.array(configs, dtype=int)
+
+        # Check if any of the cells in the path are occupied using vectorized comparison
+        occupied_cells = self.map[configs_np[:, 1], configs_np[:, 0]] != 0
+        if not ret_path:
+            # If any cell in the path is occupied, return False, otherwise return True
+            return not np.any(occupied_cells)
+        else:
+            return (not np.any(occupied_cells), configs)
+    
+    def calculate_orientation(self, start_point, end_point):
+        # Calculate the differences in x and y coordinates
+        delta_x = end_point[0] - start_point[0]
+        delta_y = end_point[1] - start_point[1]
+        
+        # Calculate the angle using arctan2 function
+        angle_rad = np.arctan2(delta_y, delta_x)
+        
+        # Convert the angle from radians to degrees
+        angle_deg = np.degrees(angle_rad)
+        
+        return angle_deg
+
+    def backwards_check(self, start, end):
+        # angle = self.calculate_orientation(start, end)
+        # if abs(self.end_theta - angle) > self.THRESHOLD_ANGLE:
+        #     self.get_logger().info(f"angle: {angle}, end_theta: {self.end_theta}, diff: {self.end_theta - angle}")
+        #     return True
+        # if we move in the direction of the orientation and are farther from the end
+        dist = self.distance(start, end)
+        dir_x = abs(np.cos(self.return_start[2]))/self.POOL_SIZE
+        dir_y = abs(np.sin(self.return_start[2]))/self.POOL_SIZE
+        move = (start[0] + dir_x * start[0], start[1] + dir_y * start[1])
+        new_dist = self.distance(move , end)
+        self.get_logger().info(f"BACKWARDS dist:{dist} new_dist:{new_dist}")
+        self.get_logger().info(f"BACKWARDS dir_x:{dir_x} dir_y:{dir_y} start[0]:{start[0]} start[1]:{start[1]}")
+        self.get_logger().info(f"BACKWARDS start:{start} end:{end} move:{move}")
+        # if the distance has increased then we know that the 
+        if dist < new_dist:
+            return True
+        else:
+            return False
+        
     
 def erode_map(map_data, erosion_size):
     """
@@ -460,7 +542,7 @@ def transform_mtw(x, y):
 
     return x_new, y_new
 
-def transform_wtm(x, y):
+def transform_wtm(x,y,theta):
     """
     Takes in x,y coordinates from world and transforms them to map scale
     """
@@ -479,9 +561,12 @@ def transform_wtm(x, y):
 
     new_x/=resolution
     new_y/=resolution
-    
-    # changed this to be ints
-    return new_x, new_y
+
+    # adjust theta with the offset and wrap it within the range [0, 2*pi)
+    new_theta = np.mod((theta - theta_offset + np.pi), 2 * np.pi) - np.pi
+
+    return new_x,new_y,new_theta
+
 
 def main(args=None):
     rclpy.init(args=args)

@@ -15,7 +15,7 @@ import time
 import dubins
 from tf_transformations import euler_from_quaternion
 
-
+pi = 3.1415
 
 
 class PathPlan(Node):
@@ -285,19 +285,21 @@ class PathPlan(Node):
         scores = {start: 0}
         previous = {}
         # have f-score and position/node that it corresponds to (start is 0)
-        queue = [(0, start)]
+        # goes score, orientation, position
+        queue = [(0, self.return_start[2], start)]
 
         while queue:
             # self.get_logger().info(f'going through queue')
-            current_score, current_node = heapq.heappop(queue)
+            current_score, current_angle, current_node = heapq.heappop(queue)
 
             # if this is the last node then reconstruct the path
             if current_node == end:
                 # self.get_logger().info("we have a found a path and are reconstructing")
                 end_time = time.time()
 
-                path = self.reconstruct_path(previous, start, end)
-                if self.backwards_check(start, end):
+                path, backwards = self.reconstruct_path(previous, start, end)
+                #if self.backwards_check(start, end):
+                if backwards:
                     self.get_logger().info(f"BACKWARDS AHHHHHHHHHHHHHHHHHHH")
                     turning_radius = self.TURNING_RAD / self.RESOLUTION /self.POOL_SIZE # turning radius divided by resolution
                     second_point = transform_wtm(path[5][0], path[5][1], 0)
@@ -305,7 +307,7 @@ class PathPlan(Node):
                                                         second_point[1]//self.POOL_SIZE, -self.return_start[2]), turning_radius).sample_many(.25 / self.RESOLUTION)
                     self.get_logger().info(f"DUBINS DEBUG start:{start}, path: {second_point[0], second_point[1]} theta: {self.start_theta}")
                     self.get_logger().info(f"DUBINS DEBUG: extra_path:{extra_path[0]} {extra_path[-1]}")
-                    extra_path = self.reconstruct_path(previous, start, end, dubin=True, dubin_path = extra_path)
+                    extra_path, _ = self.reconstruct_path(previous, start, end, dubin=True, dubin_path = extra_path)
                     self.get_logger().info(f"DUBINS DEBUG: extra_path:{extra_path[0]} {extra_path[-1]}")
                     path = extra_path + path[5:]
 
@@ -320,41 +322,59 @@ class PathPlan(Node):
 
             visited.add(current_node)
             # returns all valid neighbors + visited check is in for loop
-            neighbors = self.get_neighbors(current_node)
+            neighbors = self.get_neighbors(current_node, current_angle)
 
             for neighbor in neighbors:
-                if neighbor in visited:
+                n_point = neighbor[0]
+                n_orientation = neighbor[1]
+                if n_point in visited:
                     continue
 
                 # f-score is distance to neighbor + neighbor to end
                 #neighbor_end = self.distance(neighbor, end)
-                neighbor_end = self.manhattan(neighbor, end)
-                start_neighbor = current_score + self.manhattan(current_node, neighbor)
+                neighbor_end = self.manhattan(n_point, end)
+                start_neighbor = current_score + self.manhattan(current_node, n_point)
                 new_score = start_neighbor + neighbor_end
                 # self.get_logger().info(f"new_score: {new_score}")
 
                 # updating distances
-                if neighbor not in scores or new_score < scores[neighbor]:
-                    scores[neighbor] = new_score
-                    previous[neighbor] = current_node
-                    heapq.heappush(queue, (new_score, neighbor))
+                if n_point not in scores or new_score < scores[n_point]:
+                    scores[n_point] = new_score
+                    # this is unintuitive but the previous dictionary will have the parent node and the orientation from previous node to you
+                    previous[n_point] = (current_node, n_orientation)
+                    heapq.heappush(queue, (new_score, n_orientation, n_point))
         
         self.get_logger().info("outside of while loop")
 
 
     # EXTRA FUNCTIONS: 
 
-    def get_neighbors(self, cell):
+    def get_neighbors(self, cell, theta):
         '''
         getting the possible neighbors within -1 or 1 of the current
         '''
+        # NEED THETA IN HERE AS WELL
         x, y = cell
-        neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if (((dx != 0) or (dy != 0))) ]
+        # different possible moves and orientation associated with them
+        # (dx, dy, theta)
+        states = [(-1, -1, 3*pi/4), (-1, 0, pi/2), (-1, 1, pi/4), 
+                    (0, -1, pi), (0, 1, 0), 
+                    (1, -1, 5*pi/4), (1, 0, 3*pi/2), (1, 1, 7*pi/4)]
+        neighbors = []
+        for state in states:
+            dx = state[0]
+            dy = state[1]
+            orientation = state[2]
+            if self.is_valid_cell((x + dx, y + dy)):
+                self.get_logger().info(f" GET NEIGHBORS: theta: {theta}, orientation: {orientation}, resulting angle: {(theta + orientation)}")
+                neighbors.append(((x + dx, y + dy), (theta + orientation)%pi))
+        #neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if (((dx != 0) or (dy != 0))) ]
         #neighbors_x = [(x + dx, y) for dx in [-0.5, 0.5]]
         #neighbors_y = [(x, y + dy) for dy in [-0.5, 0.5]]
         #neighbors = neighbors_x + neighbors_y
-        valid_neighbors = filter(self.is_valid_cell, neighbors)
-        return valid_neighbors
+        
+        # valid_neighbors = filter(self.is_valid_cell, neighbor_check)
+        return neighbors
 
     def is_valid_cell(self, cell):
         '''
@@ -395,24 +415,41 @@ class PathPlan(Node):
         taking the path from the end and then going back up
         until the start
         '''
-
+        backwards = False
+        angles = {transform_mtw(self.return_end[0], self.return_end[1]) : self.return_end[2]}
         path = [transform_mtw(self.return_end[0], self.return_end[1])]
         current = end
+
         while current != start :
-            current = previous[current]
+            current, angle = previous[current]
             path.append(transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE))
+            angles[transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE)] = angle
+
         path.append(transform_mtw(self.return_start[0], self.return_start[1]))
+        angles[transform_mtw(self.return_start[0], self.return_start[1])] = self.return_start[2]
         path.reverse()
+
         if dubin:
             path = [transform_mtw(self.return_start[0], self.return_start[1])]
             for point in dubin_path:
                 path.append(transform_mtw(point[0]*self.POOL_SIZE, point[1]*self.POOL_SIZE))
+
         for index in range(0, len(path)-1):
             before = path[index]
             after = path[index + 1]
             self.final_distance += self.distance(before, after)
+
+        # checking if the path is backwards
+        # first, _ = transform_wtm(path[0][0], path[0][1], angle[path[0]])
+        # second, _ = transform_wtm(path[1][0], path[1][1], angle[path[1]]) 
+        self.get_logger().info(f" BACKWARDS first: {path[0]}, second: {path[1]}, angle 1: {angles[path[0]]}, angle 2: {angles[path[1]]}")
+        self.get_logger().info(f" BACKWARDS first mod: {angles[path[0]]%pi}, secon mod: {angles[path[1]]%pi}, diff: {abs(angles[path[0]]%pi - angles[path[1]]%pi) > pi/2}")
+
+        if abs(angles[path[0]]%pi - angles[path[1]]%pi) > pi/2:
+            backwards = True
+
         # self.get_logger().info(f"{path}")
-        return path
+        return path, backwards
 
     def publish_trajectory(self, path):
         if path:
@@ -479,6 +516,7 @@ class PathPlan(Node):
             return True
         else:
             return False
+
         
     
 def erode_map(map_data, erosion_size):
@@ -565,7 +603,7 @@ def transform_wtm(x,y,theta):
     # adjust theta with the offset and wrap it within the range [0, 2*pi)
     new_theta = np.mod((theta - theta_offset + np.pi), 2 * np.pi) - np.pi
 
-    return new_x,new_y,new_theta
+    return new_x, new_y, new_theta
 
 
 def main(args=None):

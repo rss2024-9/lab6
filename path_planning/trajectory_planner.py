@@ -286,28 +286,31 @@ class PathPlan(Node):
         previous = {}
         # have f-score and position/node that it corresponds to (start is 0)
         # goes score, orientation, position
-        queue = [(0, self.return_start[2], start)]
+        queue = [(0, start)]
 
         while queue:
             # self.get_logger().info(f'going through queue')
-            current_score, current_angle, current_node = heapq.heappop(queue)
+            current_score, current_node = heapq.heappop(queue)
 
             # if this is the last node then reconstruct the path
             if current_node == end:
                 # self.get_logger().info("we have a found a path and are reconstructing")
                 end_time = time.time()
 
-                path, backwards = self.reconstruct_path(previous, start, end)
+                path = self.reconstruct_path(previous, start, end)
                 #if self.backwards_check(start, end):
-                if backwards:
+                second_point = transform_wtm(path[2][0], path[2][1], 0)
+                self.get_logger().info(f"BACK start: {self.return_start[:2]}, second: {second_point[:2]}")
+                if self.backwards_check(self.return_start[:2], second_point[:2], self.return_start[2]):
                     self.get_logger().info(f"BACKWARDS AHHHHHHHHHHHHHHHHHHH")
                     turning_radius = self.TURNING_RAD / self.RESOLUTION /self.POOL_SIZE # turning radius divided by resolution
-                    second_point = transform_wtm(path[5][0], path[5][1], 0)
+                    second_point = transform_wtm(path[2][0], path[2][1], 0)
                     extra_path, _ = dubins.shortest_path((start[0], start[1], self.return_start[2]), (second_point[0]//self.POOL_SIZE, 
                                                         second_point[1]//self.POOL_SIZE, -self.return_start[2]), turning_radius).sample_many(.25 / self.RESOLUTION)
+                    extra_path_valid = filter(self.is_valid_cell, extra_path)
                     self.get_logger().info(f"DUBINS DEBUG start:{start}, path: {second_point[0], second_point[1]} theta: {self.start_theta}")
                     self.get_logger().info(f"DUBINS DEBUG: extra_path:{extra_path[0]} {extra_path[-1]}")
-                    extra_path, _ = self.reconstruct_path(previous, start, end, dubin=True, dubin_path = extra_path)
+                    extra_path = self.reconstruct_path(previous, start, end, dubin=True, dubin_path = extra_path_valid)
                     self.get_logger().info(f"DUBINS DEBUG: extra_path:{extra_path[0]} {extra_path[-1]}")
                     path = extra_path + path[5:]
 
@@ -322,34 +325,33 @@ class PathPlan(Node):
 
             visited.add(current_node)
             # returns all valid neighbors + visited check is in for loop
-            neighbors = self.get_neighbors(current_node, current_angle)
+            neighbors = self.get_neighbors(current_node)
 
             for neighbor in neighbors:
-                n_point = neighbor[0]
-                n_orientation = neighbor[1]
-                if n_point in visited:
+                # n_orientation = neighbor[1]
+                if neighbor in visited:
                     continue
 
                 # f-score is distance to neighbor + neighbor to end
                 #neighbor_end = self.distance(neighbor, end)
-                neighbor_end = self.manhattan(n_point, end)
-                start_neighbor = current_score + self.manhattan(current_node, n_point)
+                neighbor_end = self.manhattan(neighbor, end)
+                start_neighbor = current_score + self.manhattan(current_node, neighbor)
                 new_score = start_neighbor + neighbor_end
                 # self.get_logger().info(f"new_score: {new_score}")
 
                 # updating distances
-                if n_point not in scores or new_score < scores[n_point]:
-                    scores[n_point] = new_score
+                if neighbor not in scores or new_score < scores[neighbor]:
+                    scores[neighbor] = new_score
                     # this is unintuitive but the previous dictionary will have the parent node and the orientation from previous node to you
-                    previous[n_point] = (current_node, n_orientation)
-                    heapq.heappush(queue, (new_score, n_orientation, n_point))
+                    previous[neighbor] = (current_node)
+                    heapq.heappush(queue, (new_score, neighbor))
         
         self.get_logger().info("outside of while loop")
 
 
     # EXTRA FUNCTIONS: 
 
-    def get_neighbors(self, cell, theta):
+    def get_neighbors(self, cell):
         '''
         getting the possible neighbors within -1 or 1 of the current
         '''
@@ -357,24 +359,24 @@ class PathPlan(Node):
         x, y = cell
         # different possible moves and orientation associated with them
         # (dx, dy, theta)
-        states = [(-1, -1, 3*pi/4), (-1, 0, pi/2), (-1, 1, pi/4), 
-                    (0, -1, pi), (0, 1, 0), 
-                    (1, -1, 5*pi/4), (1, 0, 3*pi/2), (1, 1, 7*pi/4)]
-        neighbors = []
-        for state in states:
-            dx = state[0]
-            dy = state[1]
-            orientation = state[2]
-            if self.is_valid_cell((x + dx, y + dy)):
-                self.get_logger().info(f" GET NEIGHBORS: theta: {theta}, orientation: {orientation}, resulting angle: {(theta + orientation)}")
-                neighbors.append(((x + dx, y + dy), (theta + orientation)%pi))
-        #neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if (((dx != 0) or (dy != 0))) ]
+        # states = [(-1, -1, 3*pi/4), (-1, 0, pi/2), (-1, 1, pi/4), 
+        #             (0, -1, pi), (0, 1, 0), 
+        #             (1, -1, 5*pi/4), (1, 0, 3*pi/2), (1, 1, 7*pi/4)]
+        # neighbors = []
+        # for state in states:
+        #     dx = state[0]
+        #     dy = state[1]
+        #     orientation = state[2]
+        #     if self.is_valid_cell((x + dx, y + dy)):
+        #         #self.get_logger().info(f" GET NEIGHBORS: theta: {theta}, orientation: {orientation}, resulting angle: {(theta + orientation)}")
+        #         neighbors.append(((x + dx, y + dy), (theta + orientation)%(2*pi)))
+        neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if (((dx != 0) or (dy != 0))) ]
         #neighbors_x = [(x + dx, y) for dx in [-0.5, 0.5]]
         #neighbors_y = [(x, y + dy) for dy in [-0.5, 0.5]]
         #neighbors = neighbors_x + neighbors_y
         
-        # valid_neighbors = filter(self.is_valid_cell, neighbor_check)
-        return neighbors
+        valid_neighbors = filter(self.is_valid_cell, neighbors)
+        return valid_neighbors
 
     def is_valid_cell(self, cell):
         '''
@@ -415,18 +417,18 @@ class PathPlan(Node):
         taking the path from the end and then going back up
         until the start
         '''
-        backwards = False
-        angles = {transform_mtw(self.return_end[0], self.return_end[1]) : self.return_end[2]}
+        # backwards = False
+        # angles = {transform_mtw(self.return_end[0], self.return_end[1]) : self.return_end[2]}
         path = [transform_mtw(self.return_end[0], self.return_end[1])]
         current = end
 
         while current != start :
-            current, angle = previous[current]
+            current = previous[current]
             path.append(transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE))
-            angles[transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE)] = angle
+            # angles[transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE)] = angle
 
         path.append(transform_mtw(self.return_start[0], self.return_start[1]))
-        angles[transform_mtw(self.return_start[0], self.return_start[1])] = self.return_start[2]
+        # angles[transform_mtw(self.return_start[0], self.return_start[1])] = self.return_start[2]
         path.reverse()
 
         if dubin:
@@ -442,14 +444,17 @@ class PathPlan(Node):
         # checking if the path is backwards
         # first, _ = transform_wtm(path[0][0], path[0][1], angle[path[0]])
         # second, _ = transform_wtm(path[1][0], path[1][1], angle[path[1]]) 
-        self.get_logger().info(f" BACKWARDS first: {path[0]}, second: {path[1]}, angle 1: {angles[path[0]]}, angle 2: {angles[path[1]]}")
-        self.get_logger().info(f" BACKWARDS first mod: {angles[path[0]]%pi}, secon mod: {angles[path[1]]%pi}, diff: {abs(angles[path[0]]%pi - angles[path[1]]%pi) > pi/2}")
+        # self.get_logger().info(f" BACKWARDS first: {path[0]}, second: {path[1]}, angle 1: {angles[path[0]]}, angle 2: {angles[path[1]]}")
+        # self.get_logger().info(f" BACKWARDS first mod: {angles[path[0]]%pi}, secon mod: {angles[path[1]]%pi}, diff: {abs(angles[path[0]]%pi - angles[path[1]]%pi) > pi/2}")
 
-        if abs(angles[path[0]]%pi - angles[path[1]]%pi) > pi/2:
-            backwards = True
+        # if abs(angles[path[0]]%(2*pi) - angles[path[1]]%(2*pi)) > pi/2:
+        #     backwards = True
+
+        # second point, relative position from car to second point and dot with heading vector and if negative then the second point is behind the car
+        # if you take the arccos of (that)/product of magnitudes ^ then you can get the angle
 
         # self.get_logger().info(f"{path}")
-        return path, backwards
+        return path
 
     def publish_trajectory(self, path):
         if path:
@@ -497,25 +502,60 @@ class PathPlan(Node):
         
         return angle_deg
 
-    def backwards_check(self, start, end):
+    def backwards_check(self, start, second, theta):
+        '''
+        takes in start point, second point, and starting yaw
+        getting the position vector from start to second point and getting the heading vector from start
+        dotting the two vectors and seeing if they are negative
+        '''
+        backwards = False
+        pos_array = [second[0] - start[0], second[1] - start[1]]
+        self.get_logger().info(f"BACK theta: {theta}, return start{self.return_start[2]} x scale: {np.cos(theta)},  y scale: {np.sin(theta)}")
+        #head_array = [np.cos(theta)*start[0], np.sin(theta)*start[1]]
+        head_array = [np.cos(theta)/self.POOL_SIZE, np.sin(theta)*start[1]]
+        
+        self.get_logger().info(f"BACK head array: {head_array},  pos array: {pos_array}")
+
+        pos_vec = np.array(pos_array)
+        heading_vec = np.array(head_array)
+        self.get_logger().info(f"BACK head vec: {heading_vec}, pos vec: {pos_vec}")
+
+        dot = heading_vec @ pos_vec
+
+        mag_head = np.linalg.norm(heading_vec)
+        mag_pos = np.linalg.norm(pos_vec)
+
+        angle = np.arccos(dot/(mag_head * mag_pos))
+        degrees = np.degrees(angle)
+        self.get_logger().info(f"BACK dot: {dot} heading:{heading_vec}, pos: {pos_vec}, degrees: {degrees}, angle: {angle}")
+
+        self.get_logger().info(f"BACK mag head: {mag_head}, mag_pos: {mag_pos}, cos term: {dot/(mag_head * mag_pos)}")
+        if dot < 0:
+            backwards = True
+        
+        return backwards
+
+
         # angle = self.calculate_orientation(start, end)
         # if abs(self.end_theta - angle) > self.THRESHOLD_ANGLE:
         #     self.get_logger().info(f"angle: {angle}, end_theta: {self.end_theta}, diff: {self.end_theta - angle}")
         #     return True
         # if we move in the direction of the orientation and are farther from the end
-        dist = self.distance(start, end)
-        dir_x = abs(np.cos(self.return_start[2]))/self.POOL_SIZE
-        dir_y = abs(np.sin(self.return_start[2]))/self.POOL_SIZE
-        move = (start[0] + dir_x * start[0], start[1] + dir_y * start[1])
-        new_dist = self.distance(move , end)
-        self.get_logger().info(f"BACKWARDS dist:{dist} new_dist:{new_dist}")
-        self.get_logger().info(f"BACKWARDS dir_x:{dir_x} dir_y:{dir_y} start[0]:{start[0]} start[1]:{start[1]}")
-        self.get_logger().info(f"BACKWARDS start:{start} end:{end} move:{move}")
-        # if the distance has increased then we know that the 
-        if dist < new_dist:
-            return True
-        else:
-            return False
+        # dist = self.distance(start, end)
+        # dir_x = abs(np.cos(self.return_start[2]))/self.POOL_SIZE
+        # dir_y = abs(np.sin(self.return_start[2]))/self.POOL_SIZE
+        # move = (start[0] + dir_x * start[0], start[1] + dir_y * start[1])
+        # new_dist = self.distance(move , end)
+        # self.get_logger().info(f"BACKWARDS dist:{dist} new_dist:{new_dist}")
+        # self.get_logger().info(f"BACKWARDS dir_x:{dir_x} dir_y:{dir_y} start[0]:{start[0]} start[1]:{start[1]}")
+        # self.get_logger().info(f"BACKWARDS start:{start} end:{end} move:{move}")
+        # # if the distance has increased then we know that the 
+        # if dist < new_dist:
+        #     return True
+        # else:
+        #     return False
+
+
 
         
     

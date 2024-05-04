@@ -510,26 +510,26 @@ class PathPlan(Node):
         '''
         backwards = False
         pos_array = [second[0] - start[0], second[1] - start[1]]
-        self.get_logger().info(f"BACK theta: {theta}, return start{self.return_start[2]} x scale: {np.cos(theta)},  y scale: {np.sin(theta)}")
+        # self.get_logger().info(f"BACK theta: {theta}, return start{self.return_start[2]} x scale: {np.cos(theta)},  y scale: {np.sin(theta)}")
         #head_array = [np.cos(theta)*start[0], np.sin(theta)*start[1]]
         head_array = [np.cos(theta)/self.POOL_SIZE, np.sin(theta)*start[1]]
         
-        self.get_logger().info(f"BACK head array: {head_array},  pos array: {pos_array}")
+        # self.get_logger().info(f"BACK head array: {head_array},  pos array: {pos_array}")
 
         pos_vec = np.array(pos_array)
         heading_vec = np.array(head_array)
-        self.get_logger().info(f"BACK head vec: {heading_vec}, pos vec: {pos_vec}")
+        # self.get_logger().info(f"BACK head vec: {heading_vec}, pos vec: {pos_vec}")
 
         dot = heading_vec @ pos_vec
 
-        mag_head = np.linalg.norm(heading_vec)
-        mag_pos = np.linalg.norm(pos_vec)
+        # mag_head = np.linalg.norm(heading_vec)
+        # mag_pos = np.linalg.norm(pos_vec)
 
-        angle = np.arccos(dot/(mag_head * mag_pos))
-        degrees = np.degrees(angle)
-        self.get_logger().info(f"BACK dot: {dot} heading:{heading_vec}, pos: {pos_vec}, degrees: {degrees}, angle: {angle}")
+        # angle = np.arccos(dot/(mag_head * mag_pos))
+        # degrees = np.degrees(angle)
+        # self.get_logger().info(f"BACK dot: {dot} heading:{heading_vec}, pos: {pos_vec}, degrees: {degrees}, angle: {angle}")
 
-        self.get_logger().info(f"BACK mag head: {mag_head}, mag_pos: {mag_pos}, cos term: {dot/(mag_head * mag_pos)}")
+        # self.get_logger().info(f"BACK mag head: {mag_head}, mag_pos: {mag_pos}, cos term: {dot/(mag_head * mag_pos)}")
         if dot < 0:
             backwards = True
         

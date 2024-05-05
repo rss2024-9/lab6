@@ -512,7 +512,7 @@ class PathPlan(Node):
         pos_array = [second[0] - start[0], second[1] - start[1]]
         # self.get_logger().info(f"BACK theta: {theta}, return start{self.return_start[2]} x scale: {np.cos(theta)},  y scale: {np.sin(theta)}")
         #head_array = [np.cos(theta)*start[0], np.sin(theta)*start[1]]
-        head_array = [np.cos(theta)/self.POOL_SIZE, np.sin(theta)*start[1]]
+        head_array = [np.cos(theta)*start[0], np.sin(theta)*start[1]]
         
         # self.get_logger().info(f"BACK head array: {head_array},  pos array: {pos_array}")
 

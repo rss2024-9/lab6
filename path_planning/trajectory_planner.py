@@ -163,15 +163,15 @@ class PathPlan(Node):
     def final_path(self, start_pose, end_pose, map):
         '''
         plans a path in three parts:
-        #A checking backwards going from start point to nearest point on center line
-        #B taking the trajectory of center line and going until point that is closest to end point on trajectory (probably with lookahead)
-        #C going from center line to final point
+        A checking backwards going from start point to nearest point on center line
+        B taking the trajectory of center line and going until point that is closest to end point on trajectory (probably with lookahead)
+        C going from center line to final point
 
         if backwards:
-            step 1 becomes making a uturn
-
+            A becomes making a uturn
         '''
         # TODO: need to get the trajectory of line
+        # load the trajectory, interpolate points in between the points on the segment 
         # TODO: calculate the closest point with perp line (do we want to offset this a little)
         # going to have a function that finds point
 
@@ -202,9 +202,7 @@ class PathPlan(Node):
         final_path = path_A + path_B + path_C
 
 
-
-
-        self.publish_trajectory(path)
+        self.publish_trajectory(final_path)
 
         raise NotImplementedError
 

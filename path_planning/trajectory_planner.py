@@ -163,26 +163,48 @@ class PathPlan(Node):
     def final_path(self, start_pose, end_pose, map):
         '''
         plans a path in three parts:
-        #1 going from start point to nearest point on center line
-        #2 taking the trajectory of center line and going until point that is closest to end point on trajectory (probably with lookahead)
-        #3 going from center line to final point
+        #A checking backwards going from start point to nearest point on center line
+        #B taking the trajectory of center line and going until point that is closest to end point on trajectory (probably with lookahead)
+        #C going from center line to final point
 
         if backwards:
             step 1 becomes making a uturn
 
         '''
-        # STEP 1:
         # TODO: need to get the trajectory of line
         # TODO: calculate the closest point with perp line (do we want to offset this a little)
+        # going to have a function that finds point
 
         start, end = self.transformations(start_pose, end_pose)
 
         # POINTS ARE TRANSFORMED INTO CORRECT SCALE AND DOWNSAMPLED PAST HERE
 
-        a_star_1 = AStarNode(self.return_start, self.return_end, map)
-        path_1 = a_star_1.plan_path(start, end)
+        # STEP 1: checking if the line is backwards
+        # STEP 2: find the closes point on line to start using function above (PATH A)
+        a_star = AStarNode(self.return_start, self.return_end, map)
+        opt_path, backwards = a_star.plan_path(start, end)
 
-        self.publish_trajectory(path_1)
+        if backwards:
+            # STEP 2 v2: if it is backwards do  dubins (PATH A)
+            # TODO: implement dubins to do a u turn 
+            path_A = None
+
+        # STEP 3: finding the closest point on line to the end (PATH C)
+        # STEP 4: get the path from closest point to end point
+        # TODO: use same function from first part
+        # TODO: see if should change transformation stuff
+        path_C = a_star.plan_path()
+
+        # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
+        path_B = line_traj[near_start : near_end + 1]
+
+        # STEP 6: add all the paths together
+        final_path = path_A + path_B + path_C
+
+
+
+
+        self.publish_trajectory(path)
 
         raise NotImplementedError
 

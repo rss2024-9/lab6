@@ -105,7 +105,10 @@ class LineTrajectory:
         with open(path) as json_file:
             json_data = json.load(json_file)
             for p in json_data["points"]:
-                self.points.append((p["x"], p["y"]))
+                if p.get("z") is not None:
+                    self.points.append((p["x"], p["y"],p["z"]))
+                else:
+                    self.points.append((p["x"], p["y"]))
         self.update_distances()
         print("Loaded:", len(self.points), "points")
         self.mark_dirty()
@@ -113,7 +116,7 @@ class LineTrajectory:
     # build a trajectory class instance from a trajectory message
     def fromPoseArray(self, trajMsg):
         for p in trajMsg.poses:
-            self.points.append((p.position.x, p.position.y))
+            self.points.append((p.position.x, p.position.y,p.position.z))
         self.update_distances()
         self.mark_dirty()
         print("Loaded new trajectory with:", len(self.points), "points")

@@ -16,7 +16,7 @@ class LoadTrajectory(Node):
 
         self.declare_parameter("trajectory", "default")
         self.path = self.get_parameter("trajectory").get_parameter_value().string_value
-
+        self.get_logger().info(f"path is: {self.path}")
         # initialize and load the trajectory
         self.trajectory = LineTrajectory(self, "/loaded_trajectory")
         self.get_logger().info(f"Loading from {self.path}")

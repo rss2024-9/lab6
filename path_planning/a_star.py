@@ -72,7 +72,7 @@ class AStarNode:
                 second_point = transform_wtm(path[2][0], path[2][1], 0)
                 if backwards_check(self.return_start[:2], second_point[:2], self.return_start[2]):
                     backwards = True
-                    raise NotImplementedError
+                    #raise NotImplementedError
 
                 return path, backwards
 

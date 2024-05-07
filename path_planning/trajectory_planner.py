@@ -57,6 +57,18 @@ class PathPlan(Node):
                                     {"x": -5.5363922119140625, "y": 25.662315368652344}, {"x": -19.717021942138672, "y": 25.677358627319336}, 
                                     {"x": -20.30797004699707, "y": 26.20694923400879}, {"x": -20.441822052001953, "y": 33.974945068359375}, 
                                     {"x": -55.0716438293457, "y": 34.07769775390625}, {"x": -55.30067825317383, "y": 1.4463690519332886}]}
+        self.line_traj_points = []
+        self.line_traj_real = []
+        for point in self.line_traj["points"]:
+            #puts in map frame
+            x,y,theta = transform_wtm(point["x"],point["y"],0)
+            x/=self.POOL_SIZE
+            y/=self.POOL_SIZE
+            x=int(x)
+            y=int(y)
+            self.line_traj_points.append((x,y,theta))
+            self.line_traj_real.append((point["x"],point["y"],1)) #1 in the z part to show its line traj
+
 
         with open('path_test.txt', 'w') as file:
             pass
@@ -88,7 +100,7 @@ class PathPlan(Node):
         )
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
-
+        self.get_logger().info("planner initialized")
 
     def map_cb(self, msg):
         """
@@ -189,16 +201,58 @@ class PathPlan(Node):
         # STEP 1: checking if the line is backwards
         a_star = AStarNode(self.return_start, self.return_end, map)
         opt_path, backwards = a_star.plan_path()
-        self.publish_trajectory(final_path)
+        #self.publish_trajectory(opt_path)
 
         # TODO: need to get the trajectory of line MAKE SURE THIS IS IN MAP FRAME
         # load the trajectory, interpolate points in between the points on the segment 
 
         if backwards:
+
             # STEP 2 v2: if it is backwards do  dubins (PATH A)
             # dubins should probably be a case in a star, and just set a variable here to True
             # TODO: implement dubins to do a u turn 
-            path_A = None
+            
+            offset = 4 # how far away from the line we want the u-turn to go
+            np_points = np.array(self.line_traj_points)[:,0:2] #get x,y for loaded trajectory points
+            np_start = np.array(start)
+
+            # Calculate the euclidean distances using vectorized operations
+            distances = np.linalg.norm(np_points - np_start, axis=1)
+
+            #get first and second nearest indices
+            args = np.argpartition(distances,1)
+            nearest_ix = args[0]
+            sec_nearest_ix = args[1]
+
+            #self.get_logger().info(f"closest points: {nearest_ix,sec_nearest_ix}")
+
+            #check if this is forward vector
+            if nearest_ix>sec_nearest_ix:
+                vec = np_points[nearest_ix]-np_points[sec_nearest_ix]
+            else:
+                vec = np_points[sec_nearest_ix]-np_points[nearest_ix]
+
+            normal = vec[::-1]/np.linalg.norm(vec)# get unit normal
+            normal[0] = normal[0]*-1*offset #make normal opposite direction and extend it by offset, !TODO idk if this is accurate
+
+            #use projects from function to get nearest point to our position on the trajectory line
+            close_point = closest_point(np_points[nearest_ix],np_points[sec_nearest_ix],start)
+
+            close_point[0]+=normal[0] # add normal to the close point, !TODO idk if this is correct
+
+
+            #Use dubins to get u-turn trajectory 
+            configs, _ = dubins.shortest_path((self.return_start[0]//self.POOL_SIZE,self.return_start[1]//self.POOL_SIZE,self.return_start[2]), (close_point[0], close_point[1], -self.return_start[2]), self.TURNING_RAD/self.POOL_SIZE/self.RESOLUTION).sample_many(.25 / self.RESOLUTION/self.POOL_SIZE)
+
+           
+            #transform path to real world
+            path_A = [transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE) for point in configs]
+            
+            self.publish_trajectory(path_A)
+
+            
+
+
 
         # STEP 2: find the closest point on line to start using function above (PATH A)
         # TODO: BEFORE ADDING IN THE INTERPOLATED POINTS IN THE LINE SEGMENT maybe get the slope of the line segment and then find perp line
@@ -225,7 +279,7 @@ class PathPlan(Node):
         path_C, _ = C_node.plan_path()
 
         # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
-        path_B = line_traj[near_start : near_end + 1]
+        path_B = self.line_traj_real[near_start : near_end + 1]
 
         # STEP 6: add all the paths together
         final_path = path_A + path_B + path_C

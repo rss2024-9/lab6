@@ -52,6 +52,12 @@ class PathPlan(Node):
         self.TURNING_RAD = 0.848
         self.THRESHOLD_ANGLE = 3.141
 
+        self.line_traj = {"points": [{"x": -19.99921417236328, "y": 1.3358267545700073}, {"x": -18.433984756469727, "y": 7.590575218200684}, 
+                                    {"x": -15.413466453552246, "y": 10.617328643798828}, {"x": -6.186201572418213, "y": 21.114534378051758}, 
+                                    {"x": -5.5363922119140625, "y": 25.662315368652344}, {"x": -19.717021942138672, "y": 25.677358627319336}, 
+                                    {"x": -20.30797004699707, "y": 26.20694923400879}, {"x": -20.441822052001953, "y": 33.974945068359375}, 
+                                    {"x": -55.0716438293457, "y": 34.07769775390625}, {"x": -55.30067825317383, "y": 1.4463690519332886}]}
+
         with open('path_test.txt', 'w') as file:
             pass
 
@@ -138,6 +144,11 @@ class PathPlan(Node):
             self.get_logger().info("ending goal pose cb")
 
     def transformations(self, start_pose, end_pose):
+        '''
+        takes in the start pose and end pose in world frame and then transforms into map
+        sets self. start and end theta and self.return start and end to the transformed points
+        returns the int of the start and end
+        '''
         self.get_logger().info("transforming")
 
         quaternion = start_pose.pose.pose.orientation
@@ -168,32 +179,50 @@ class PathPlan(Node):
         C going from center line to final point
 
         if backwards:
-            A becomes making a uturn
+            A becomes making a u-turn
         '''
-        # TODO: need to get the trajectory of line
-        # load the trajectory, interpolate points in between the points on the segment 
-        # TODO: calculate the closest point with perp line (do we want to offset this a little)
-        # going to have a function that finds point
 
         start, end = self.transformations(start_pose, end_pose)
 
         # POINTS ARE TRANSFORMED INTO CORRECT SCALE AND DOWNSAMPLED PAST HERE
 
         # STEP 1: checking if the line is backwards
-        # STEP 2: find the closes point on line to start using function above (PATH A)
         a_star = AStarNode(self.return_start, self.return_end, map)
-        opt_path, backwards = a_star.plan_path(start, end)
+        opt_path, backwards = a_star.plan_path()
+        self.publish_trajectory(final_path)
+
+        # TODO: need to get the trajectory of line MAKE SURE THIS IS IN MAP FRAME
+        # load the trajectory, interpolate points in between the points on the segment 
 
         if backwards:
             # STEP 2 v2: if it is backwards do  dubins (PATH A)
+            # dubins should probably be a case in a star, and just set a variable here to True
             # TODO: implement dubins to do a u turn 
             path_A = None
+
+        # STEP 2: find the closest point on line to start using function above (PATH A)
+        # TODO: BEFORE ADDING IN THE INTERPOLATED POINTS IN THE LINE SEGMENT maybe get the slope of the line segment and then find perp line
+        # go through each of the starting intersections and find the first two that are closest to the point? then take that line seg
+        # then can check if the perp line at that coord goes through point on line. otherwise take the closest intersection line seg
+
+        # p1 is the closest point from dictionary to point
+        # p2 is the second closest point theoretically this should not be a problem cuz the line segmenet doesnt have any sharp turns
+
+        a1 = line_closest # this implementation depends on how the line is represented
+        a2 = line_behind_of_closest # 
+        start_closest = closest_point(a1, a2, self.return_start)
+        A_node = AStarNode(self.return_start, start_closest, map)
+        path_A, _ = A_node.plan_path()
 
         # STEP 3: finding the closest point on line to the end (PATH C)
         # STEP 4: get the path from closest point to end point
         # TODO: use same function from first part
         # TODO: see if should change transformation stuff
-        path_C = a_star.plan_path()
+        c1 = end_line_closest # this implementation depends on how line rep - two closest points to end point
+        c2 = end_line_ahead_of_closest
+        end_closest = closest_point(c1, c2, self.return_end)
+        C_node = AStarNode(self.return_start, end_closest, map)
+        path_C, _ = C_node.plan_path()
 
         # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
         path_B = line_traj[near_start : near_end + 1]
@@ -201,12 +230,9 @@ class PathPlan(Node):
         # STEP 6: add all the paths together
         final_path = path_A + path_B + path_C
 
-
         self.publish_trajectory(final_path)
 
         raise NotImplementedError
-
-
 
     def publish_trajectory(self, path):
         if path:
@@ -221,7 +247,6 @@ class PathPlan(Node):
             self.get_logger().info("no path, sad")
 
     
-
 
 def main(args=None):
     rclpy.init(args=args)

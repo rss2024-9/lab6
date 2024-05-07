@@ -42,10 +42,13 @@ class AStarNode:
         # for testing
         self.final_distance = 0
 
-    def plan_path(self, start, end):
+    def plan_path(self):
         """
-        takes start and end point and returns a path between the two
+        returns a path between self.return_start and self.return_end
         """
+
+        start = (int(self.return_start[0]/self.POOL_SIZE), int(self.return_start[1]/self.POOL_SIZE))
+        end = (int(self.return_end[0]/self.POOL_SIZE), int(self.return_end[1]/self.POOL_SIZE))
 
         if not self.is_valid_cell(start) or not self.is_valid_cell(end):
             print("invalid start or end")
@@ -275,3 +278,26 @@ def chebyshev(cell1, cell2):
     x1, y1 = cell1
     x2, y2 = cell2
     return max(abs(x2 - x1), abs(y2 - y1))
+
+def closest_point(p1, p2, point):
+    '''
+    takes in two points that form a line segment and a point to find the closest point on line 
+    p1 should be the closest point on the line segment given to us
+    returns the closest point
+    '''
+    p1 = np.array(p1)
+    p2 = np.array(p2)
+    point = np.array(point)
+
+    p1_to_p2_vec = p2 - p1
+    p1_to_point_vec = point - p1
+
+    # project pi to point onto p1 to p2
+    proj_len = np.dot(p1_to_point_vec, p1_to_p2_vec) / np.dot(p1_to_p2_vec, p1_to_p2_vec)
+    # if the start or end is behind the closest point then the closest is the closest point
+    if proj_len <= 0:
+        closest_point = p1
+    else:
+        closest_point = p1 + proj_len * p1_to_p2_vec
+
+    return closest_point

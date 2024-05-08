@@ -45,7 +45,7 @@ class AStarNode:
     def plan_path(self):
         """
         returns a path between self.return_start and self.return_end
-        inputs should be already pooled!!! 
+        inputs should be already pooled!!! pool happens within the transformation
         """
 
         # start = (int(self.return_start[0]/self.POOL_SIZE), int(self.return_start[1]/self.POOL_SIZE))
@@ -130,15 +130,15 @@ class AStarNode:
         takes in the parent dictionary, start and end point, whether or not to do dubins and return path
         taking the path from the end and then going back up until the start
         '''
-        new_end = transform_mtw(self.return_end[0], self.return_end[1])
-        path = [new_end[0]*self.POOL_SIZE, new_end[1]*self.POOL_SIZE]
+        new_end = transform_mtw(self.return_end[0]*self.POOL_SIZE, self.return_end[1]*self.POOL_SIZE)
+        path = [(new_end[0], new_end[1])]
         current = end
 
         while current != start :
             current = previous[current]
             path.append(transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE))
-        new_start = transform_mtw(self.return_start[0], self.return_start[1])
-        path.append((new_start[0]*self.POOL_SIZE, new_start[1]*self.POOL_SIZE))
+        new_start = transform_mtw(self.return_start[0]*self.POOL_SIZE, self.return_start[1]*self.POOL_SIZE)
+        path.append((new_start[0], new_start[1]))
         path.reverse()
 
         # if dubin:
@@ -286,7 +286,7 @@ def chebyshev(cell1, cell2):
     x2, y2 = cell2
     return max(abs(x2 - x1), abs(y2 - y1))
 
-def closest_point(p1, p2, point):
+def closest_point(p1, p2, point, angle = 0):
     '''
     takes in two points that form a line segment and a point to find the closest point on line 
     p1 should be the closest point on the line segment given to us
@@ -307,5 +307,6 @@ def closest_point(p1, p2, point):
     else:
         closest_point = p1 + proj_len * p1_to_p2_vec
     print("PROJE_LEN", proj_len)
+    print("CLOSEST POINT", closest_point)
 
-    return closest_point
+    return (closest_point[0], closest_point[1], angle)

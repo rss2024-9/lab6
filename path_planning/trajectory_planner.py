@@ -219,6 +219,7 @@ class PathPlan(Node):
         # STEP 1: checking if the line is backwards
         a_star = AStarNode(return_start, return_end, map)
         opt_path, backwards = a_star.plan_path()
+        print("OPT PATH", opt_path[0])
         # self.publish_trajectory(opt_path)
 
         # trajectory of the line
@@ -226,7 +227,7 @@ class PathPlan(Node):
 
         # TODO: NEED TO KEEP TRACK OF WHICH SIDE WE ARE COMING FROM
         # currently testing with coming from the right
-        side = "right"
+        side = "left"
         if side == "right":
             np_points[::-1]
 
@@ -256,7 +257,8 @@ class PathPlan(Node):
         c2 = None
         c2_ind = None
         path_C = None
-        path_B = None
+        path_B = []
+        final_path = []
 
         if backwards:
 
@@ -298,6 +300,7 @@ class PathPlan(Node):
            
             #transform path to real world
             path_A = [transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE) for point in configs]
+            print("PATH A BAKCWARDS", path_A[0:2])
             
             # self.publish_trajectory(path_A)
 
@@ -327,7 +330,7 @@ class PathPlan(Node):
                 a2 = np_points[start_next_ix]
                 a2_ind = start_next_ix
                 self.get_logger().info(f'INDEX: next {start_next_ix}')
-            start_closest = tuple(closest_point(a1, a2, return_start[:2]))
+            start_closest = closest_point(a1, a2, return_start[:2])
             self.get_logger().info(f'PATH - start closest: {start_closest}, a1: {a1}, a2: {a2}')
 
             self.get_logger().info(f'PATH - start closest: {start_closest}, return_start: {return_start}')
@@ -348,20 +351,25 @@ class PathPlan(Node):
             c2 = np_points[end_prior_ix]
             c2_ind = end_prior_ix
 
-        end_closest = closest_point(c1, c2, return_end[:2])
-        C_node = AStarNode(return_end, end_closest, map)
+        end_closest = closest_point(c1, c2, return_end[:2], angle = return_end[2])
+        self.get_logger().info(f'END CLOSEST {end_closest}')
+        C_node = AStarNode(end_closest, return_end, map)
         path_C, _ = C_node.plan_path()
-        # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
-        print("path A", path_A, "path_C", path_C)
-        traj = np.array(self.line_traj_real)[:,0:2]
-        path_B = path_A[-1] + traj[a2_ind : c2_ind + 1] + path_C[0]
 
-        # STEP 6: add all the paths together
-        final_path = path_A[:-1] + path_B + path_C[1:]
+        # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
+        traj = [row[:2] for row in self.line_traj_real]
+        print(traj)
+        if traj == []:
+            final_path = opt_path
+        else:
+            path_B = [path_A[-1]] + traj[a2_ind : c2_ind + 1] + [path_C[0]]
+            print("THIS IS SPATH B", path_B, "[path_A[-1]]", [path_A[-1]], "[path_C[0]]", [path_C[0]])
+
+            # STEP 6: add all the paths together
+            #final_path = list(path_A[:-1]) + list(path_B) + list(path_C[1:])
+            final_path = list(path_A[:-1]) + list(path_C[1:])
 
         self.publish_trajectory(final_path)
-
-        # raise NotImplementedError
 
     def publish_trajectory(self, path):
         if path:

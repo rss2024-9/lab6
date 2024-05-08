@@ -57,17 +57,24 @@ class PathPlan(Node):
                                     {"x": -5.5363922119140625, "y": 25.662315368652344}, {"x": -19.717021942138672, "y": 25.677358627319336}, 
                                     {"x": -20.30797004699707, "y": 26.20694923400879}, {"x": -20.441822052001953, "y": 33.974945068359375}, 
                                     {"x": -55.0716438293457, "y": 34.07769775390625}, {"x": -55.30067825317383, "y": 1.4463690519332886}]}
+
         self.line_traj_points = []
         self.line_traj_real = []
         for point in self.line_traj["points"]:
             #puts in map frame
             x,y,theta = transform_wtm(point["x"],point["y"],0)
+
             x/=self.POOL_SIZE
             y/=self.POOL_SIZE
+
+            # do we need to make all of these integers
             x=int(x)
             y=int(y)
             self.line_traj_points.append((x,y,theta))
             self.line_traj_real.append((point["x"],point["y"],1)) #1 in the z part to show its line traj
+
+        print(self.line_traj_points)
+        print(self.line_traj_real)
 
 
         with open('path_test.txt', 'w') as file:
@@ -183,6 +190,15 @@ class PathPlan(Node):
 
         return start, end
 
+    def pool(self, start, end):
+        '''
+        takes in self.return_start and self.return_end and returns the x, y coordinates pooled
+        '''
+
+        start = (start[0]/self.POOL_SIZE, start[1]/self.POOL_SIZE, start[2])
+        end = (end[0]/self.POOL_SIZE, end[1]/self.POOL_SIZE, end[2])
+        return start, end
+
     def final_path(self, start_pose, end_pose, map):
         '''
         plans a path in three parts:
@@ -196,62 +212,94 @@ class PathPlan(Node):
 
         start, end = self.transformations(start_pose, end_pose)
 
+        return_start, return_end = self.pool(self.return_start, self.return_end)
+
         # POINTS ARE TRANSFORMED INTO CORRECT SCALE AND DOWNSAMPLED PAST HERE
 
         # STEP 1: checking if the line is backwards
-        a_star = AStarNode(self.return_start, self.return_end, map)
+        a_star = AStarNode(return_start, return_end, map)
         opt_path, backwards = a_star.plan_path()
-        #self.publish_trajectory(opt_path)
+        # self.publish_trajectory(opt_path)
 
-        # TODO: need to get the trajectory of line MAKE SURE THIS IS IN MAP FRAME
-        # load the trajectory, interpolate points in between the points on the segment 
+        # trajectory of the line
+        np_points = np.array(self.line_traj_points)[:,0:2] # get x,y for loaded trajectory points
+
+        # TODO: NEED TO KEEP TRACK OF WHICH SIDE WE ARE COMING FROM
+        # currently testing with coming from the right
+        side = "right"
+        if side == "right":
+            np_points[::-1]
+
+        # idk how much you care about it being ints here, but self.return_start is the decimal version
+        # MAKE SURE THAT IF YOU ARE USING CORRECT POOLING SIZE HERE
+        np_start = np.array(start)
+        start_distances = np.linalg.norm(np_points - np_start, axis=1)
+
+        # get closest
+        start_args = np.argpartition(start_distances,1)
+        start_nearest_ix = start_args[0]
+        start_sec_nearest_ix = start_args[1]
+        start_next_ix = start_nearest_ix + 1
+
+        # do the same for end
+        np_end = np.array(end)
+        end_distances = np.linalg.norm(np_points - np_end, axis=1)
+        end_args = np.argpartition(end_distances, 1)
+        end_nearest_ix = end_args[1]
+        end_prior_ix = end_nearest_ix - 1
+
+        a1 = None
+        a2 = None
+        a2_ind = None
+        path_A = None
+        c1 = None
+        c2 = None
+        c2_ind = None
+        path_C = None
+        path_B = None
 
         if backwards:
 
             # STEP 2 v2: if it is backwards do  dubins (PATH A)
             # dubins should probably be a case in a star, and just set a variable here to True
-            # TODO: implement dubins to do a u turn 
-            
+            #             
             offset = 4 # how far away from the line we want the u-turn to go
-            np_points = np.array(self.line_traj_points)[:,0:2] #get x,y for loaded trajectory points
-            np_start = np.array(start)
 
-            # Calculate the euclidean distances using vectorized operations
-            distances = np.linalg.norm(np_points - np_start, axis=1)
+                    # trajectory of the line
+            # np_points = np.array(self.line_traj_points)[:,0:2] # get x,y for loaded trajectory points
 
-            #get first and second nearest indices
-            args = np.argpartition(distances,1)
-            nearest_ix = args[0]
-            sec_nearest_ix = args[1]
+            # # idk how much you care about it being ints here, but self.return_start is the decimal version
+            # np_start = np.array(start)
+            # distances = np.linalg.norm(np_points - np_start, axis=1)
+
+            # # get closest
+            # args = np.argpartition(distances,1)
+            # nearest_ix = args[0]
+
 
             #self.get_logger().info(f"closest points: {nearest_ix,sec_nearest_ix}")
 
             #check if this is forward vector
-            if nearest_ix>sec_nearest_ix:
-                vec = np_points[nearest_ix]-np_points[sec_nearest_ix]
+            if start_nearest_ix>start_sec_nearest_ix:
+                vec = np_points[start_nearest_ix]-np_points[start_sec_nearest_ix]
             else:
-                vec = np_points[sec_nearest_ix]-np_points[nearest_ix]
+                vec = np_points[start_sec_nearest_ix]-np_points[start_nearest_ix]
 
             normal = vec[::-1]/np.linalg.norm(vec)# get unit normal
             normal[0] = normal[0]*-1*offset #make normal opposite direction and extend it by offset, !TODO idk if this is accurate
 
             #use projects from function to get nearest point to our position on the trajectory line
-            close_point = closest_point(np_points[nearest_ix],np_points[sec_nearest_ix],start)
+            close_point = closest_point(np_points[start_nearest_ix],np_points[start_sec_nearest_ix],start)
 
             close_point[0]+=normal[0] # add normal to the close point, !TODO idk if this is correct
 
-
             #Use dubins to get u-turn trajectory 
-            configs, _ = dubins.shortest_path((self.return_start[0]//self.POOL_SIZE,self.return_start[1]//self.POOL_SIZE,self.return_start[2]), (close_point[0], close_point[1], -self.return_start[2]), self.TURNING_RAD/self.POOL_SIZE/self.RESOLUTION).sample_many(.25 / self.RESOLUTION/self.POOL_SIZE)
-
+            configs, _ = dubins.shortest_path((self.return_start[0]//self.POOL_SIZE, self.return_start[1]//self.POOL_SIZE, self.return_start[2]), (close_point[0], close_point[1], -self.return_start[2]), self.TURNING_RAD/self.POOL_SIZE/self.RESOLUTION).sample_many(.25 / self.RESOLUTION/self.POOL_SIZE)
            
             #transform path to real world
             path_A = [transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE) for point in configs]
             
-            self.publish_trajectory(path_A)
-
-            
-
+            # self.publish_trajectory(path_A)
 
 
         # STEP 2: find the closest point on line to start using function above (PATH A)
@@ -262,31 +310,58 @@ class PathPlan(Node):
         # p1 is the closest point from dictionary to point
         # p2 is the second closest point theoretically this should not be a problem cuz the line segmenet doesnt have any sharp turns
 
-        a1 = line_closest # this implementation depends on how the line is represented
-        a2 = line_behind_of_closest # 
-        start_closest = closest_point(a1, a2, self.return_start)
-        A_node = AStarNode(self.return_start, start_closest, map)
-        path_A, _ = A_node.plan_path()
+        # if we are on the edge case
+        # TODO: another edge case is that the car has to keep driving around to the other side because start and end are in different lanes
+        # ideally the controller would just loop around the thing
+        # i will have it so that the part that the controller should be following is duplicated
+        else:
+            a1 = np_points[start_nearest_ix]
+            
+            # if the start index is at the end, take the prior index instead of next
+            if start_nearest_ix == len(np_points) - 1:
+                self.get_logger().info(f'INDEX: prior {start_nearest_ix - 1}')
+                a2 = np_points[start_nearest_ix - 1] # edge case is accounted for in the closest_point function in a_star
+                a2_ind = start_nearest_ix - 1
+            else:
+                 # other wise take the next point
+                a2 = np_points[start_next_ix]
+                a2_ind = start_next_ix
+                self.get_logger().info(f'INDEX: next {start_next_ix}')
+            start_closest = tuple(closest_point(a1, a2, return_start[:2]))
+            self.get_logger().info(f'PATH - start closest: {start_closest}, a1: {a1}, a2: {a2}')
+
+            self.get_logger().info(f'PATH - start closest: {start_closest}, return_start: {return_start}')
+
+            A_node = AStarNode(return_start, start_closest, map)
+            path_A, _ = A_node.plan_path()
 
         # STEP 3: finding the closest point on line to the end (PATH C)
         # STEP 4: get the path from closest point to end point
-        # TODO: use same function from first part
-        # TODO: see if should change transformation stuff
-        c1 = end_line_closest # this implementation depends on how line rep - two closest points to end point
-        c2 = end_line_ahead_of_closest
-        end_closest = closest_point(c1, c2, self.return_end)
-        C_node = AStarNode(self.return_start, end_closest, map)
-        path_C, _ = C_node.plan_path()
+        c1 = np_points[end_nearest_ix]
 
+        # if the end index is at the start, then take the next index instead of prior
+        if end_nearest_ix == 0:
+            c2 = np_points[end_nearest_ix + 1]
+            c2_ind = end_nearest_ix + 1
+
+        else:
+            c2 = np_points[end_prior_ix]
+            c2_ind = end_prior_ix
+
+        end_closest = closest_point(c1, c2, return_end[:2])
+        C_node = AStarNode(return_end, end_closest, map)
+        path_C, _ = C_node.plan_path()
         # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
-        path_B = self.line_traj_real[near_start : near_end + 1]
+        print("path A", path_A, "path_C", path_C)
+        traj = np.array(self.line_traj_real)[:,0:2]
+        path_B = path_A[-1] + traj[a2_ind : c2_ind + 1] + path_C[0]
 
         # STEP 6: add all the paths together
-        final_path = path_A + path_B + path_C
+        final_path = path_A[:-1] + path_B + path_C[1:]
 
         self.publish_trajectory(final_path)
 
-        raise NotImplementedError
+        # raise NotImplementedError
 
     def publish_trajectory(self, path):
         if path:

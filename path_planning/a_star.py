@@ -45,12 +45,18 @@ class AStarNode:
     def plan_path(self):
         """
         returns a path between self.return_start and self.return_end
+        inputs should be already pooled!!! 
         """
 
-        start = (int(self.return_start[0]/self.POOL_SIZE), int(self.return_start[1]/self.POOL_SIZE))
-        end = (int(self.return_end[0]/self.POOL_SIZE), int(self.return_end[1]/self.POOL_SIZE))
+        # start = (int(self.return_start[0]/self.POOL_SIZE), int(self.return_start[1]/self.POOL_SIZE))
+        # end = (int(self.return_end[0]/self.POOL_SIZE), int(self.return_end[1]/self.POOL_SIZE))
+
+        start = (int(self.return_start[0]), int(self.return_start[1]))
+        end = (int(self.return_end[0]), int(self.return_end[1]))
 
         if not self.is_valid_cell(start) or not self.is_valid_cell(end):
+            print(f'VALUES: start {start}, end {end}')
+            print(f'start:{self.is_valid_cell(start)} end:{self.is_valid_cell(end)}')
             print("invalid start or end")
             return        
 
@@ -124,20 +130,21 @@ class AStarNode:
         takes in the parent dictionary, start and end point, whether or not to do dubins and return path
         taking the path from the end and then going back up until the start
         '''
-        path = [transform_mtw(self.return_end[0], self.return_end[1])]
+        new_end = transform_mtw(self.return_end[0], self.return_end[1])
+        path = [new_end[0]*self.POOL_SIZE, new_end[1]*self.POOL_SIZE]
         current = end
 
         while current != start :
             current = previous[current]
             path.append(transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE))
-
-        path.append(transform_mtw(self.return_start[0], self.return_start[1]))
+        new_start = transform_mtw(self.return_start[0], self.return_start[1])
+        path.append((new_start[0]*self.POOL_SIZE, new_start[1]*self.POOL_SIZE))
         path.reverse()
 
-        if dubin:
-            path = [transform_mtw(self.return_start[0], self.return_start[1])]
-            for point in dubin_path:
-                path.append(transform_mtw(point[0]*self.POOL_SIZE, point[1]*self.POOL_SIZE))
+        # if dubin:
+        #     path = [transform_mtw(self.return_start[0], self.return_start[1])]
+        #     for point in dubin_path:
+        #         path.append(transform_mtw(point[0]*self.POOL_SIZE, point[1]*self.POOL_SIZE))
 
         return path
 
@@ -299,5 +306,6 @@ def closest_point(p1, p2, point):
         closest_point = p1
     else:
         closest_point = p1 + proj_len * p1_to_p2_vec
+    print("PROJE_LEN", proj_len)
 
     return closest_point

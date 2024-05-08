@@ -131,14 +131,15 @@ class AStarNode:
         taking the path from the end and then going back up until the start
         '''
         new_end = transform_mtw(self.return_end[0]*self.POOL_SIZE, self.return_end[1]*self.POOL_SIZE)
-        path = [(new_end[0], new_end[1])]
+        path = [(new_end[0], new_end[1],1)]
         current = end
 
         while current != start :
             current = previous[current]
-            path.append(transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE))
+            #have 1 in z coordinate so it is centered by follower
+            path.append((*transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE),1))
         new_start = transform_mtw(self.return_start[0]*self.POOL_SIZE, self.return_start[1]*self.POOL_SIZE)
-        path.append((new_start[0], new_start[1]))
+        path.append((new_start[0], new_start[1],1))
         path.reverse()
 
         # if dubin:

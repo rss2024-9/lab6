@@ -25,9 +25,9 @@ class PathPlan(Node):
 
     def __init__(self):
         super().__init__("trajectory_planner")
-        self.declare_parameter('odom_topic', "default")
-        self.declare_parameter('map_topic', "default")
-        self.declare_parameter('initial_pose_topic', "default")
+        self.declare_parameter('odom_topic', "/odom")
+        self.declare_parameter('map_topic', "/map")
+        self.declare_parameter('initial_pose_topic', "/initialpose")
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
@@ -71,7 +71,7 @@ class PathPlan(Node):
             x=int(x)
             y=int(y)
             self.line_traj_points.append((x,y,theta))
-            self.line_traj_real.append((point["x"],point["y"],1)) #1 in the z part to show its line traj
+            self.line_traj_real.append((point["x"],point["y"],0)) #0 in the z part to show its line traj
 
         print(self.line_traj_points)
         print(self.line_traj_real)
@@ -291,7 +291,7 @@ class PathPlan(Node):
             normal[0] = normal[0]*-1*offset #make normal opposite direction and extend it by offset, !TODO idk if this is accurate
 
             #use projects from function to get nearest point to our position on the trajectory line
-            close_point = closest_point(np_points[start_nearest_ix],np_points[start_sec_nearest_ix],start)
+            close_point = np.array(closest_point(np_points[start_nearest_ix],np_points[start_sec_nearest_ix],start))
 
             close_point[0]+=normal[0] # add normal to the close point, !TODO idk if this is correct
 
@@ -299,7 +299,7 @@ class PathPlan(Node):
             configs, _ = dubins.shortest_path((self.return_start[0]//self.POOL_SIZE, self.return_start[1]//self.POOL_SIZE, self.return_start[2]), (close_point[0], close_point[1], -self.return_start[2]), self.TURNING_RAD/self.POOL_SIZE/self.RESOLUTION).sample_many(.25 / self.RESOLUTION/self.POOL_SIZE)
            
             #transform path to real world
-            path_A = [transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE) for point in configs]
+            path_A = [(*transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE),1) for point in configs]
             print("PATH A BAKCWARDS", path_A[0:2])
             
             # self.publish_trajectory(path_A)
@@ -357,7 +357,7 @@ class PathPlan(Node):
         path_C, _ = C_node.plan_path()
 
         # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
-        traj = [row[:2] for row in self.line_traj_real]
+        traj = [row for row in self.line_traj_real]
         print(traj)
         if traj == []:
             final_path = opt_path
@@ -367,7 +367,7 @@ class PathPlan(Node):
 
             # STEP 6: add all the paths together
             #final_path = list(path_A[:-1]) + list(path_B) + list(path_C[1:])
-            final_path = list(path_A[:-1]) + list(path_C[1:])
+            final_path = list(path_A[:-1]) + path_B+ list(path_C[1:])
 
         self.publish_trajectory(final_path)
 
@@ -376,7 +376,7 @@ class PathPlan(Node):
             self.get_logger().info("path planned woohoo")
             for coords in path:
                 # made the coords floats cuz it was complaining
-                coords = (float(coords[0]), float(coords[1]))
+                coords = (float(coords[0]), float(coords[1]),float(coords[2]))
                 self.trajectory.addPoint(coords)         
             self.traj_pub.publish(self.trajectory.toPoseArray())
             self.trajectory.publish_viz()

@@ -73,8 +73,8 @@ class PathPlan(Node):
             self.line_traj_points.append((x,y,theta))
             self.line_traj_real.append((point["x"],point["y"],0)) #0 in the z part to show its line traj
 
-        print(self.line_traj_points)
-        print(self.line_traj_real)
+        #print(self.line_traj_points)
+        #print(self.line_traj_real)
 
 
         with open('path_test.txt', 'w') as file:
@@ -217,11 +217,11 @@ class PathPlan(Node):
         # POINTS ARE TRANSFORMED INTO CORRECT SCALE AND DOWNSAMPLED PAST HERE
 
         # STEP 1: checking if the line is backwards
-        print("RETRUNSN END !!!!KJLHDSFKJLLDFKJS", return_end)
-        print("RETRUNSN SRTARTTYT !!!!KJLHDSFKJLLDFKJS", return_start)
+        #print("RETRUNSN END !!!!KJLHDSFKJLLDFKJS", return_end)
+        #print("RETRUNSN SRTARTTYT !!!!KJLHDSFKJLLDFKJS", return_start)
         a_star = AStarNode(return_start, return_end, map)
         opt_path, backwards = a_star.plan_path()
-        print("OPT PATH", opt_path[0])
+        #print("OPT PATH", opt_path[0])
         #self.publish_trajectory(opt_path)
 
         # trajectory of the line
@@ -303,7 +303,7 @@ class PathPlan(Node):
            
             #transform path to real world
             path_A = [(*transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE),1) for point in configs]
-            print("PATH A BAKCWARDS", path_A[0:2])
+            #print("PATH A BAKCWARDS", path_A[0:2])
             
             # self.publish_trajectory(path_A)
 
@@ -363,16 +363,17 @@ class PathPlan(Node):
 
         # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
         traj = [row for row in self.line_traj_real]
-        print(traj)
+        #print(traj)
         if traj == []:
             final_path = opt_path
         else:
             path_B = [path_A[-1]] + traj[a2_ind : c2_ind + 1] + [path_C[0]]
-            print("THIS IS SPATH B", path_B, "[path_A[-1]]", [path_A[-1]], "[path_C[0]]", [path_C[0]])
+            #print("THIS IS SPATH B", path_B, "[path_A[-1]]", [path_A[-1]], "[path_C[0]]", [path_C[0]])
 
             # STEP 6: add all the paths together
             #final_path = list(path_A[:-1]) + list(path_B) + list(path_C[1:])
             final_path = list(path_A[:-1]) + path_B+ list(path_C[1:])
+            #print(final_path)
 
         self.publish_trajectory(final_path)
 

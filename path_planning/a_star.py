@@ -76,6 +76,7 @@ class AStarNode:
                 path = self.reconstruct_path(previous, start, end)
 
                 second_point = transform_wtm(path[2][0], path[2][1], 0)
+                second_point = (second_point[0]/self.POOL_SIZE, second_point[1]/self.POOL_SIZE, 0)
                 if backwards_check(self.return_start[:2], second_point[:2], self.return_start[2]):
                     backwards = True
                     #raise NotImplementedError
@@ -131,15 +132,15 @@ class AStarNode:
         taking the path from the end and then going back up until the start
         '''
         new_end = transform_mtw(self.return_end[0]*self.POOL_SIZE, self.return_end[1]*self.POOL_SIZE)
-        path = [(new_end[0], new_end[1],1)]
+        path = [(new_end[0], new_end[1], 1)]
         current = end
 
         while current != start :
             current = previous[current]
             #have 1 in z coordinate so it is centered by follower
-            path.append((*transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE),1))
+            path.append((*transform_mtw(current[0]*self.POOL_SIZE, current[1]*self.POOL_SIZE), 1))
         new_start = transform_mtw(self.return_start[0]*self.POOL_SIZE, self.return_start[1]*self.POOL_SIZE)
-        path.append((new_start[0], new_start[1],1))
+        path.append((new_start[0], new_start[1], 1))
         path.reverse()
 
         # if dubin:
@@ -158,6 +159,8 @@ def backwards_check(start, second, theta):
     dotting the two vectors and seeing if they are negative
     '''
     backwards = False
+    print("START POINT!!!!!@!!FDSNVKJHSEDFK", start)
+    print("SECDONG POINSTTJSBDFMSDFLHJKSDKJF", second)
     pos_array = [second[0] - start[0], second[1] - start[1]]
     head_array = [np.cos(theta)*start[0], np.sin(theta)*start[1]]
     
@@ -168,6 +171,10 @@ def backwards_check(start, second, theta):
 
     if dot < 0:
         backwards = True
+
+    print("DOT PRODUCT!!!!", dot)
+    print("POS VEC!", pos_vec)
+    print("HEADING VEC", heading_vec)
     
     return backwards
 
@@ -307,7 +314,7 @@ def closest_point(p1, p2, point, angle = 0):
         closest_point = p1
     else:
         closest_point = p1 + proj_len * p1_to_p2_vec
-    print("PROJE_LEN", proj_len)
-    print("CLOSEST POINT", closest_point)
+    # print("PROJE_LEN", proj_len)
+    # print("CLOSEST POINT", closest_point)
 
     return (closest_point[0], closest_point[1], angle)

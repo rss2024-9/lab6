@@ -217,10 +217,12 @@ class PathPlan(Node):
         # POINTS ARE TRANSFORMED INTO CORRECT SCALE AND DOWNSAMPLED PAST HERE
 
         # STEP 1: checking if the line is backwards
+        print("RETRUNSN END !!!!KJLHDSFKJLLDFKJS", return_end)
+        print("RETRUNSN SRTARTTYT !!!!KJLHDSFKJLLDFKJS", return_start)
         a_star = AStarNode(return_start, return_end, map)
         opt_path, backwards = a_star.plan_path()
         print("OPT PATH", opt_path[0])
-        # self.publish_trajectory(opt_path)
+        #self.publish_trajectory(opt_path)
 
         # trajectory of the line
         np_points = np.array(self.line_traj_points)[:,0:2] # get x,y for loaded trajectory points
@@ -233,7 +235,7 @@ class PathPlan(Node):
 
         # idk how much you care about it being ints here, but self.return_start is the decimal version
         # MAKE SURE THAT IF YOU ARE USING CORRECT POOLING SIZE HERE
-        np_start = np.array(start)
+        np_start = np.array(return_start[:2])
         start_distances = np.linalg.norm(np_points - np_start, axis=1)
 
         # get closest
@@ -243,10 +245,11 @@ class PathPlan(Node):
         start_next_ix = start_nearest_ix + 1
 
         # do the same for end
-        np_end = np.array(end)
+        np_end = np.array(return_end[:2])
         end_distances = np.linalg.norm(np_points - np_end, axis=1)
         end_args = np.argpartition(end_distances, 1)
-        end_nearest_ix = end_args[1]
+        self.get_logger().info(f'END ARGS:{end_args}' )
+        end_nearest_ix = end_args[0]
         end_prior_ix = end_nearest_ix - 1
 
         a1 = None
@@ -261,7 +264,7 @@ class PathPlan(Node):
         final_path = []
 
         if backwards:
-
+            self.get_logger().info('GOING BAKCWARDS')
             # STEP 2 v2: if it is backwards do  dubins (PATH A)
             # dubins should probably be a case in a star, and just set a variable here to True
             #             
@@ -351,8 +354,10 @@ class PathPlan(Node):
             c2 = np_points[end_prior_ix]
             c2_ind = end_prior_ix
 
+        
         end_closest = closest_point(c1, c2, return_end[:2], angle = return_end[2])
         self.get_logger().info(f'END CLOSEST {end_closest}')
+        self.get_logger().info(f'C1 and C2 {end_nearest_ix}, {c2_ind}')
         C_node = AStarNode(end_closest, return_end, map)
         path_C, _ = C_node.plan_path()
 

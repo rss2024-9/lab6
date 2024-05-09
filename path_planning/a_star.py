@@ -75,6 +75,8 @@ class AStarNode:
             if current_node == end:
                 path = self.reconstruct_path(previous, start, end)
 
+                print("RECONSTRUCTED PATH", path)
+                print("SECOND POINT ", path[2][0], "Y", path[2][1])
                 second_point = transform_wtm(path[2][0], path[2][1], 0)
                 second_point = (second_point[0]/self.POOL_SIZE, second_point[1]/self.POOL_SIZE, 0)
                 if backwards_check(self.return_start[:2], second_point[:2], self.return_start[2]):
@@ -143,12 +145,23 @@ class AStarNode:
         path.append((new_start[0], new_start[1], 1))
         path.reverse()
 
+
+        # post processing to give every other one in the path and adding noise
+        every_other = []
+        for i, point in enumerate(path):
+            if i % 2 == 0 or i in [0, 1, 2, len(path) - 1]:
+                noise = np.random.normal(-0.05, 0.05, size=2)
+                noisy_point = point[:2] + noise
+                every_other.append((noisy_point[0], noisy_point[1], point[2]))
+        print("EVERY OTHER" , every_other)
+        print("PATH", path)
+
         # if dubin:
         #     path = [transform_mtw(self.return_start[0], self.return_start[1])]
         #     for point in dubin_path:
         #         path.append(transform_mtw(point[0]*self.POOL_SIZE, point[1]*self.POOL_SIZE))
 
-        return path
+        return every_other
 
 
 # OUTSIDE FUNCTIONS

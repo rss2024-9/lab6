@@ -75,7 +75,6 @@ class AStarNode:
             if current_node == end:
                 path = self.reconstruct_path(previous, start, end)
 
-                print("RECONSTRUCTED PATH", path)
                 print("SECOND POINT ", path[2][0], "Y", path[2][1])
                 second_point = transform_wtm(path[2][0], path[2][1], 0)
                 second_point = (second_point[0]/self.POOL_SIZE, second_point[1]/self.POOL_SIZE, 0)
@@ -156,8 +155,6 @@ class AStarNode:
                     noise = np.random.normal(-0.05, 0.05, size=2)
                 noisy_point = point[:2] + noise
                 every_other.append((noisy_point[0], noisy_point[1], point[2]))
-        print("EVERY OTHER" , every_other)
-        print("PATH", path)
 
         # if dubin:
         #     path = [transform_mtw(self.return_start[0], self.return_start[1])]
@@ -175,8 +172,6 @@ def backwards_check(start, second, theta):
     dotting the two vectors and seeing if they are negative
     '''
     backwards = False
-    print("START POINT!!!!!@!!FDSNVKJHSEDFK", start)
-    print("SECDONG POINSTTJSBDFMSDFLHJKSDKJF", second)
     pos_array = [second[0] - start[0], second[1] - start[1]]
     head_array = [np.cos(theta)*start[0], np.sin(theta)*start[1]]
     
@@ -187,10 +182,6 @@ def backwards_check(start, second, theta):
 
     if dot < 0:
         backwards = True
-
-    print("DOT PRODUCT!!!!", dot)
-    print("POS VEC!", pos_vec)
-    print("HEADING VEC", heading_vec)
     
     return backwards
 
@@ -323,7 +314,7 @@ def closest_point(p1, p2, point, angle = 0):
     p1_to_p2_vec = p2 - p1
     p1_to_point_vec = point - p1
 
-    # project pi to point onto p1 to p2
+    # project p1 to point onto p1 to p2
     proj_len = np.dot(p1_to_point_vec, p1_to_p2_vec) / np.dot(p1_to_p2_vec, p1_to_p2_vec)
     # if the start or end is behind the closest point then the closest is the closest point
     if proj_len <= 0:
@@ -332,5 +323,30 @@ def closest_point(p1, p2, point, angle = 0):
         closest_point = p1 + proj_len * p1_to_p2_vec
     # print("PROJE_LEN", proj_len)
     # print("CLOSEST POINT", closest_point)
+    distance = np.linalg.norm(closest_point - point)
 
     return (closest_point[0], closest_point[1], angle)
+
+def calculate_vectors(start_point, end_point, points, magnitude):
+    '''
+    takes in one point p and a list of points and calculates the vectors from that point to all the points
+    returns a list with the vectors 
+    '''
+    start_point = np.array(start_point)
+    end_point = np.array(end_point)
+    valid_vectors = []
+
+    # calculate the vector from start_point to end_point
+    dir_vec = end_point - start_point
+    dir_norm = np.linalg.norm(dir_vec)
+
+    for point in points:
+        point = np.array(point)
+        vector_to_point = point - start_point
+        projection = np.dot(vector_to_point, dir_vec) / dir_norm
+
+        # check if the dot product is positive and magnitude is less than the threshold
+        if projection >= 0 and np.linalg.norm(vector_to_point) < magnitude:
+            valid_vectors.append(vector_to_point)
+
+    return valid_vectors

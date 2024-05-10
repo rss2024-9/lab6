@@ -73,8 +73,8 @@ class PathPlan(Node):
             self.line_traj_points.append((x,y,theta))
             self.line_traj_real.append((point["x"],point["y"],0)) #0 in the z part to show its line traj
 
-        #print(self.line_traj_points)
-        #print(self.line_traj_real)
+        self.get_logger().info(f'TRAJ POINTS (transformed and pooled){self.line_traj_points}')
+        self.get_logger().info(f'TRAJ REAL{self.line_traj_real}')
 
 
         with open('path_test.txt', 'w') as file:
@@ -199,6 +199,28 @@ class PathPlan(Node):
         end = (end[0]/self.POOL_SIZE, end[1]/self.POOL_SIZE, end[2])
         return start, end
 
+    def valid_trajectory(self, first, second, traj, point, location):
+        '''
+        takes in the first closest index, the next index, trajectory, and the start or end point, with location as the label
+        returns whichever index is in front of the point (where we should start path B trajectory)
+        '''
+        if first == second:
+            return first
+        bigger = max(first, second)
+        smaller = min(first, second)
+
+        # if it is the start, we want to check if it equals the earlier point
+        if location == "start":
+            if point == traj[smaller]:
+                return smaller
+            else:
+                return bigger
+        elif location == "end":
+            if point == traj[bigger]:
+                return bigger
+            else: 
+                return smaller
+
     def final_path(self, start_pose, end_pose, map):
         '''
         plans a path in three parts:
@@ -217,8 +239,6 @@ class PathPlan(Node):
         # POINTS ARE TRANSFORMED INTO CORRECT SCALE AND DOWNSAMPLED PAST HERE
 
         # STEP 1: checking if the line is backwards
-        #print("RETRUNSN END !!!!KJLHDSFKJLLDFKJS", return_end)
-        #print("RETRUNSN SRTARTTYT !!!!KJLHDSFKJLLDFKJS", return_start)
         a_star = AStarNode(return_start, return_end, map)
         opt_path, backwards = a_star.plan_path()
         #print("OPT PATH", opt_path[0])
@@ -233,7 +253,6 @@ class PathPlan(Node):
         if side == "right":
             np_points[::-1]
 
-        # idk how much you care about it being ints here, but self.return_start is the decimal version
         # MAKE SURE THAT IF YOU ARE USING CORRECT POOLING SIZE HERE
         np_start = np.array(return_start[:2])
         start_distances = np.linalg.norm(np_points - np_start, axis=1)
@@ -262,6 +281,8 @@ class PathPlan(Node):
         path_C = None
         path_B = []
         final_path = []
+        start_closest = None
+        end_closest = None
 
         if backwards:
             self.get_logger().info('GOING BAKCWARDS')
@@ -295,6 +316,7 @@ class PathPlan(Node):
 
             #use projects from function to get nearest point to our position on the trajectory line
             close_point = np.array(closest_point(np_points[start_nearest_ix],np_points[start_sec_nearest_ix],start))
+            start_closest = close_point
 
             close_point[0]+=normal[0] # add normal to the close point, !TODO idk if this is correct
 
@@ -307,19 +329,6 @@ class PathPlan(Node):
             
             # self.publish_trajectory(path_A)
 
-
-        # STEP 2: find the closest point on line to start using function above (PATH A)
-        # TODO: BEFORE ADDING IN THE INTERPOLATED POINTS IN THE LINE SEGMENT maybe get the slope of the line segment and then find perp line
-        # go through each of the starting intersections and find the first two that are closest to the point? then take that line seg
-        # then can check if the perp line at that coord goes through point on line. otherwise take the closest intersection line seg
-
-        # p1 is the closest point from dictionary to point
-        # p2 is the second closest point theoretically this should not be a problem cuz the line segmenet doesnt have any sharp turns
-
-        # if we are on the edge case
-        # TODO: another edge case is that the car has to keep driving around to the other side because start and end are in different lanes
-        # ideally the controller would just loop around the thing
-        # i will have it so that the part that the controller should be following is duplicated
         else:
             a1 = np_points[start_nearest_ix]
             
@@ -358,21 +367,26 @@ class PathPlan(Node):
         end_closest = closest_point(c1, c2, return_end[:2], angle = return_end[2])
         self.get_logger().info(f'END CLOSEST {end_closest}')
         self.get_logger().info(f'C1 and C2 {end_nearest_ix}, {c2_ind}')
+        self.get_logger().info(f'A1 and A2 {start_nearest_ix}, {a2_ind}')
         C_node = AStarNode(end_closest, return_end, map)
         path_C, _ = C_node.plan_path()
 
         # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
         traj = [row for row in self.line_traj_real]
-        #print(traj)
-        if traj == []:
-            final_path = opt_path
+        start_index = self.valid_trajectory(start_nearest_ix, a2_ind, traj, start_closest, "start")
+        end_index = self.valid_trajectory(end_nearest_ix, c2_ind, traj, end_closest, "end")
+        if traj[start_index : end_index] == []:
+            final_path = path_A + path_C
         else:
-            path_B = [path_A[-1]] + traj[a2_ind : c2_ind + 1] + [path_C[0]]
-            #print("THIS IS SPATH B", path_B, "[path_A[-1]]", [path_A[-1]], "[path_C[0]]", [path_C[0]])
+            # path_A -1 should be the closest point on traj to start, path_C 0 should be closest point on traj to end
+            # we don't want the ones that are past the places they intersect
+
+            path_B = [path_A[-1]] + traj[start_index : end_index + 1] + [path_C[0]]
+            self.get_logger().info(f"THIS IS SPATH B {path_B} [path_A[-1]], {[path_A[-1]]} [path_C[0]] {[path_C[0]]}")
 
             # STEP 6: add all the paths together
             #final_path = list(path_A[:-1]) + list(path_B) + list(path_C[1:])
-            final_path = list(path_A[:-1]) + path_B+ list(path_C[1:])
+            final_path = list(path_A[:-1]) + path_B + list(path_C[1:])
             #print(final_path)
 
         self.publish_trajectory(final_path)
@@ -388,7 +402,6 @@ class PathPlan(Node):
             self.trajectory.publish_viz()
         else:
             self.get_logger().info("no path, sad")
-
     
 
 def main(args=None):

@@ -150,7 +150,10 @@ class AStarNode:
         every_other = []
         for i, point in enumerate(path):
             if i % 2 == 0 or i in [0, 1, 2, len(path) - 1]:
-                noise = np.random.normal(-0.05, 0.05, size=2)
+                if i == 0 or i == len(path) - 1:
+                    noise = (0,0)
+                else:
+                    noise = np.random.normal(-0.05, 0.05, size=2)
                 noisy_point = point[:2] + noise
                 every_other.append((noisy_point[0], noisy_point[1], point[2]))
         print("EVERY OTHER" , every_other)

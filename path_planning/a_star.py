@@ -55,9 +55,9 @@ class AStarNode:
         end = (int(self.return_end[0]), int(self.return_end[1]))
 
         if not self.is_valid_cell(start) or not self.is_valid_cell(end):
-            print(f'VALUES: start {start}, end {end}')
-            print(f'start:{self.is_valid_cell(start)} end:{self.is_valid_cell(end)}')
-            print("invalid start or end")
+            # print(f'VALUES: start {start}, end {end}')
+            # print(f'start:{self.is_valid_cell(start)} end:{self.is_valid_cell(end)}')
+            # print("invalid start or end")
             return        
 
         backwards = False
@@ -75,12 +75,14 @@ class AStarNode:
             if current_node == end:
                 path = self.reconstruct_path(previous, start, end)
 
-                print("SECOND POINT ", path[2][0], "Y", path[2][1])
-                second_point = transform_wtm(path[2][0], path[2][1], 0)
-                second_point = (second_point[0]/self.POOL_SIZE, second_point[1]/self.POOL_SIZE, 0)
-                if backwards_check(self.return_start[:2], second_point[:2], self.return_start[2]):
-                    backwards = True
-                    #raise NotImplementedError
+                
+                if len(path)>=3:
+                    # print("SECOND POINT ", path[2][0], "Y", path[2][1])
+                    second_point = transform_wtm(path[2][0], path[2][1], 0)
+                    second_point = (second_point[0]/self.POOL_SIZE, second_point[1]/self.POOL_SIZE, 0)
+                    if backwards_check(self.return_start[:2], second_point[:2], self.return_start[2]):
+                        backwards = True
+                        #raise NotImplementedError
 
                 return path, backwards
 

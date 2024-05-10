@@ -211,6 +211,8 @@ class PathPlan(Node):
 
         # if it is the start, we want to check if it equals the earlier point
         if location == "start":
+            print("point",point,type(point))
+            print("traj",traj[smaller],type(traj[smaller]))
             if point == traj[smaller]:
                 return smaller
             else:
@@ -283,6 +285,7 @@ class PathPlan(Node):
         final_path = []
         start_closest = None
         end_closest = None
+        flipped=False
 
         if backwards:
             self.get_logger().info('GOING BAKCWARDS')
@@ -311,20 +314,24 @@ class PathPlan(Node):
             else:
                 vec = np_points[start_sec_nearest_ix]-np_points[start_nearest_ix]
 
+            a2_ind = len(self.line_traj_real) - start_sec_nearest_ix -1
+
             normal = vec[::-1]/np.linalg.norm(vec)# get unit normal
             normal[0] = normal[0]*-1*offset #make normal opposite direction and extend it by offset, !TODO idk if this is accurate
 
             #use projects from function to get nearest point to our position on the trajectory line
             close_point = np.array(closest_point(np_points[start_nearest_ix],np_points[start_sec_nearest_ix],start))
-            start_closest = close_point
+            start_closest = tuple(close_point)
 
             close_point[0]+=normal[0] # add normal to the close point, !TODO idk if this is correct
-
+            
             #Use dubins to get u-turn trajectory 
             configs, _ = dubins.shortest_path((self.return_start[0]//self.POOL_SIZE, self.return_start[1]//self.POOL_SIZE, self.return_start[2]), (close_point[0], close_point[1], -self.return_start[2]), self.TURNING_RAD/self.POOL_SIZE/self.RESOLUTION).sample_many(.25 / self.RESOLUTION/self.POOL_SIZE)
            
             #transform path to real world
             path_A = [(*transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE),1) for point in configs]
+            flipped = True
+            np_points = np_points[::-1]
             #print("PATH A BAKCWARDS", path_A[0:2])
             
             # self.publish_trajectory(path_A)
@@ -352,6 +359,11 @@ class PathPlan(Node):
 
         # STEP 3: finding the closest point on line to the end (PATH C)
         # STEP 4: get the path from closest point to end point
+        if flipped:
+            end_nearest_ix = len(self.line_traj_real) -end_nearest_ix-1
+            end_prior_ix = len(self.line_traj_real) - end_prior_ix -1
+            start_nearest_ix = len(self.line_traj_real) -start_nearest_ix -1
+            
         c1 = np_points[end_nearest_ix]
 
         # if the end index is at the start, then take the next index instead of prior
@@ -372,7 +384,10 @@ class PathPlan(Node):
         path_C, _ = C_node.plan_path()
 
         # STEP 5: get the indices of the points closest to start and end, then get the segment in between (PATH B)
-        traj = [row for row in self.line_traj_real]
+        if flipped:
+            traj = [row for row in self.line_traj_real[::-1]]
+        else:
+            traj = [row for row in self.line_traj_real]
         start_index = self.valid_trajectory(start_nearest_ix, a2_ind, traj, start_closest, "start")
         end_index = self.valid_trajectory(end_nearest_ix, c2_ind, traj, end_closest, "end")
         if traj[start_index : end_index] == []:

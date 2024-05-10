@@ -220,11 +220,6 @@ class PathPlan(Node):
                 return smaller
             else:
                 return bigger
-        # elif location == "end" and back:
-        #     if point == traj[smaller]:
-        #         return smaller
-        #     else:
-        #         return bigger
             
         elif location == "end":
             #self.get_logger().info(f"point in end: {point}, traj[bigger]: {traj[bigger]}")
@@ -331,7 +326,7 @@ class PathPlan(Node):
             normal[0] = normal[0]*-1*offset #make normal opposite direction and extend it by offset, !TODO idk if this is accurate
 
             #use projects from function to get nearest point to our position on the trajectory line
-            close_point = np.array(closest_point(np_points[start_nearest_ix],np_points[start_sec_nearest_ix],start))
+            close_point = np.array(closest_point(np_points[start_nearest_ix],np_points[start_sec_nearest_ix],start, start_nearest_ix, start_sec_nearest_ix, "start"))
             start_closest = tuple(close_point)
 
             close_point[0]+=normal[0] # add normal to the close point, !TODO idk if this is correct
@@ -352,16 +347,14 @@ class PathPlan(Node):
             
             # if the start index is at the end, take the prior index instead of next
             if start_nearest_ix == len(np_points) - 1:
-                self.get_logger().info(f'INDEX: prior {start_nearest_ix - 1}')
                 a2 = np_points[start_nearest_ix - 1] # edge case is accounted for in the closest_point function in a_star
                 a2_ind = start_nearest_ix - 1
             else:
                  # other wise take the next point
                 a2 = np_points[start_next_ix]
                 a2_ind = start_next_ix
-                self.get_logger().info(f'INDEX: next {start_next_ix}')
 
-            start_closest = closest_point(a1, a2, return_start[:2])
+            start_closest = closest_point(a1, a2, return_start[:2], start_nearest_ix, a2_ind, "start")
             self.get_logger().info(f'PATH - start closest: {start_closest}, a1: {a1}, a2: {a2}')
             self.get_logger().info(f'PATH - start closest: {start_closest}, return_start: {return_start}')
 
@@ -389,7 +382,7 @@ class PathPlan(Node):
             c2_ind = end_prior_ix
 
         
-        end_closest = closest_point(c1, c2, return_end[:2], angle = return_end[2])
+        end_closest = closest_point(c1, c2, return_end[:2], end_nearest_ix, c2_ind, "end", angle = return_end[2])
         self.get_logger().info(f'END CLOSEST {end_closest}')
         self.get_logger().info(f'C1 and C2 {end_nearest_ix}, {c2_ind}')
         self.get_logger().info(f'A1 and A2 {start_nearest_ix}, {a2_ind}')

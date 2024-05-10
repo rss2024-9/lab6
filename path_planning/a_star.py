@@ -303,7 +303,7 @@ def chebyshev(cell1, cell2):
     x2, y2 = cell2
     return max(abs(x2 - x1), abs(y2 - y1))
 
-def closest_point(p1, p2, point, angle = 0):
+def closest_point(p1, p2, point, p1_ind, p2_ind, location, angle = 0):
     '''
     takes in two points that form a line segment and a point to find the closest point on line 
     p1 should be the closest point on the line segment given to us
@@ -324,9 +324,25 @@ def closest_point(p1, p2, point, angle = 0):
     else:
         closest_point = p1 + proj_len * p1_to_p2_vec
     # print("PROJE_LEN", proj_len)
-    # print("CLOSEST POINT", closest_point)
-    distance = np.linalg.norm(closest_point - point)
+    print("CLOSEST POINT", closest_point)
+    # adding a small distance in direction of vector
+    # we want to go by index: if it is start then we want the earliest index to later index vector direction
+    # if it is the end then we want the later index to earlier index vector direction
+    if location == "start":
+        # theoretically if the indices are the same this should not cause a problem
+        start = p1 if p1_ind < p2_ind else p2
+        end = p1 if p1_ind > p2_ind else p2 
 
+    elif location == "end":
+        start = p1 if p1_ind > p2_ind else p2
+        end = p1 if p1_ind < p2_ind else p2 
+
+    # vector from start to end
+    start_to_end = end - start
+    dir_vec =  start_to_end / np.linalg.norm(start_to_end)
+    closest_point += 3 * dir_vec
+    print("NEW CLOSEST POINT", closest_point)
+    print("DIRECTION VECTOR", dir_vec, "START TO END", start_to_end)
     return (closest_point[0], closest_point[1], angle)
 
 def calculate_vectors(start_point, end_point, points, magnitude):

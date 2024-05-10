@@ -199,26 +199,37 @@ class PathPlan(Node):
         end = (end[0]/self.POOL_SIZE, end[1]/self.POOL_SIZE, end[2])
         return start, end
 
-    def valid_trajectory(self, first, second, traj, point, location):
+    def valid_trajectory(self, first, second, traj, point, location, back):
         '''
         takes in the first closest index, the next index, trajectory, and the start or end point, with location as the label
         returns whichever index is in front of the point (where we should start path B trajectory)
         '''
+        self.get_logger().info(f'FISRT:{first} SECOND: {second}')
         if first == second:
             return first
-        bigger = max(first, second)
-        smaller = min(first, second)
+        else:
+            bigger = max(first, second) # if backwards that means that the bigger it is the closer it is to the beginning
+            smaller = min(first, second) # if backwards that means smaller is closer to end
+        self.get_logger().info(f'BIGGER: {bigger}, SMALLER: {smaller}, LOCATION: {location}')
+        self.get_logger().info(f'BIGGER TRAJ {traj[bigger]} SMALLER TRAJ {traj[smaller]}')
 
         # if it is the start, we want to check if it equals the earlier point
         if location == "start":
-            print("point",point,type(point))
-            print("traj",traj[smaller],type(traj[smaller]))
+            self.get_logger().info(f"point in start: {point}, traj[smaller]: {traj[smaller]}")
             if point == traj[smaller]:
                 return smaller
             else:
                 return bigger
+        # elif location == "end" and back:
+        #     if point == traj[smaller]:
+        #         return smaller
+        #     else:
+        #         return bigger
+            
         elif location == "end":
+            #self.get_logger().info(f"point in end: {point}, traj[bigger]: {traj[bigger]}")
             if point == traj[bigger]:
+                self.get_logger().info(f"point in end: {point}, traj[bigger]: {traj[bigger]}")
                 return bigger
             else: 
                 return smaller
@@ -349,9 +360,9 @@ class PathPlan(Node):
                 a2 = np_points[start_next_ix]
                 a2_ind = start_next_ix
                 self.get_logger().info(f'INDEX: next {start_next_ix}')
+
             start_closest = closest_point(a1, a2, return_start[:2])
             self.get_logger().info(f'PATH - start closest: {start_closest}, a1: {a1}, a2: {a2}')
-
             self.get_logger().info(f'PATH - start closest: {start_closest}, return_start: {return_start}')
 
             A_node = AStarNode(return_start, start_closest, map)
@@ -360,8 +371,10 @@ class PathPlan(Node):
         # STEP 3: finding the closest point on line to the end (PATH C)
         # STEP 4: get the path from closest point to end point
         if flipped:
-            end_nearest_ix = len(self.line_traj_real) -end_nearest_ix-1
-            end_prior_ix = len(self.line_traj_real) - end_prior_ix -1
+            end_nearest_ix = len(self.line_traj_real) - end_nearest_ix - 1
+            self.get_logger().info(f'END PRIOR INDEX {end_prior_ix}')
+            end_prior_ix = len(self.line_traj_real) - end_prior_ix - 3 # have to adjust for the fact that we subtracted earlier and we flipped
+            self.get_logger().info(f'NEW END PRIOR INDEX {end_prior_ix}')
             start_nearest_ix = len(self.line_traj_real) -start_nearest_ix -1
             
         c1 = np_points[end_nearest_ix]
@@ -388,16 +401,19 @@ class PathPlan(Node):
             traj = [row for row in self.line_traj_real[::-1]]
         else:
             traj = [row for row in self.line_traj_real]
-        start_index = self.valid_trajectory(start_nearest_ix, a2_ind, traj, start_closest, "start")
-        end_index = self.valid_trajectory(end_nearest_ix, c2_ind, traj, end_closest, "end")
-        if traj[start_index : end_index] == []:
+
+        start_index = self.valid_trajectory(start_nearest_ix, a2_ind, traj, start_closest, "start", back = backwards)
+        end_index = self.valid_trajectory(end_nearest_ix, c2_ind, traj, end_closest, "end", back = backwards)
+        self.get_logger().info(f'start_index: {start_index}, end_index: {end_index}')
+
+        if traj[start_index : end_index + 1] == []:
             final_path = path_A + path_C
         else:
             # path_A -1 should be the closest point on traj to start, path_C 0 should be closest point on traj to end
             # we don't want the ones that are past the places they intersect
 
             path_B = [path_A[-1]] + traj[start_index : end_index + 1] + [path_C[0]]
-            self.get_logger().info(f"THIS IS SPATH B {path_B} [path_A[-1]], {[path_A[-1]]} [path_C[0]] {[path_C[0]]}")
+            # self.get_logger().info(f"THIS IS SPATH B {path_B} [path_A[-1]], {[path_A[-1]]} [path_C[0]] {[path_C[0]]}")
 
             # STEP 6: add all the paths together
             #final_path = list(path_A[:-1]) + list(path_B) + list(path_C[1:])

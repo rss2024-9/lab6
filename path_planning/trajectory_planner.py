@@ -106,7 +106,7 @@ class PathPlan(Node):
 
         self.traj_pub = self.create_publisher(
             PoseArray,
-            "/trajectory/current",
+            "/trajectory/store",
             10
         )
 
@@ -472,7 +472,7 @@ class PathPlan(Node):
             final_path = opt_path
 
         else:
-            if start_index > end_index:
+            if start_index > end_index and not flipped:
                 temp = start_index - 1
                 start_index = end_index + 1
                 end_index = temp

@@ -3,7 +3,7 @@ from rclpy.node import Node
 
 assert rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray,PointStamped
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid,Odometry
 from .utils import LineTrajectory
 
 from skimage.morphology import erosion, disk, dilation
@@ -58,11 +58,11 @@ class PathPlan(Node):
                                     {"x": -20.30797004699707, "y": 26.20694923400879}, {"x": -20.441822052001953, "y": 33.974945068359375}, 
                                     {"x": -55.0716438293457, "y": 34.07769775390625}, {"x": -55.30067825317383, "y": 1.4463690519332886}]}
 
-        # self.line_traj = {"points": [{"x": -19.99921417236328, "y": 1.3358267545700073}, {"x": -18.433984756469727, "y": 7.590575218200684}, 
-        #                             {"x": -15.413466453552246, "y": 10.617328643798828}, {"x": -6.186201572418213, "y": 21.114534378051758}, 
-        #                             {"x": -5.5363922119140625, "y": 25.662315368652344}, {"x": -19.717021942138672, "y": 25.677358627319336}, 
-        #                             {"x": -20.30797004699707, "y": 26.20694923400879}, {"x": -20.441822052001953, "y": 33.974945068359375}, 
-        #                             {"x": -55.0716438293457, "y": 34.07769775390625}, {"x":-55.10603332519531,"y":16.070819854736328}, {"x": -55.30067825317383, "y": 1.4463690519332886}]}
+        self.line_traj = {"points": [{"x": -19.99921417236328, "y": 1.3358267545700073}, {"x": -18.433984756469727, "y": 7.590575218200684}, 
+                                    {"x": -15.413466453552246, "y": 10.617328643798828}, {"x": -6.186201572418213, "y": 21.114534378051758}, 
+                                    {"x": -5.5363922119140625, "y": 25.662315368652344}, {"x": -19.717021942138672, "y": 25.677358627319336}, 
+                                    {"x": -20.30797004699707, "y": 26.20694923400879}, {"x": -20.441822052001953, "y": 33.974945068359375}, 
+                                    {"x": -55.0716438293457, "y": 34.07769775390625}, {"x":-55.10603332519531,"y":16.070819854736328}, {"x": -55.30067825317383, "y": 1.4463690519332886}]}
 
         self.line_traj_points = []
         self.line_traj_real = []
@@ -116,11 +116,19 @@ class PathPlan(Node):
             self.pose_cb,
             10
         )
+        self.localize_sub = self.create_subscription(Odometry,
+            "/pf/pose/odom",
+            self.localize_cb,
+            10)
 
         
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
         self.get_logger().info("planner initialized")
+
+
+    def localize_cb(self,msg):
+        self.start_pose = msg
 
     def map_cb(self, msg):
         """
@@ -228,7 +236,7 @@ class PathPlan(Node):
         end = (end[0]/self.POOL_SIZE, end[1]/self.POOL_SIZE, end[2])
         return start, end
 
-    def valid_trajectory(self, first, second, traj, point, location, back):
+    def valid_trajectory(self, first, second, traj, point, location, theta):
         '''
         takes in the first closest index, the next index, trajectory, and the start or end point, with location as the label
         returns whichever index is in front of the point (where we should start path B trajectory)
@@ -240,23 +248,47 @@ class PathPlan(Node):
             bigger = max(first, second) # if backwards that means that the bigger it is the closer it is to the beginning
             smaller = min(first, second) # if backwards that means smaller is closer to end
         self.get_logger().info(f'BIGGER: {bigger}, SMALLER: {smaller}, LOCATION: {location}')
-        self.get_logger().info(f'BIGGER TRAJ {traj[bigger]} SMALLER TRAJ {traj[smaller]}')
 
-        # if it is the start, we want to check if it equals the earlier point
-        if location == "start":
-            self.get_logger().info(f"point in start: {point}, traj[smaller]: {traj[smaller]}")
-            if point == traj[smaller]:
-                return smaller
-            else:
-                return bigger
+        head_vec = [np.cos(theta)*point[0], np.sin(theta)*point[1]]
+        point_to_first_vec = np.array(first) - np.array(point[:2])
+        point_to_second_vec = np.array(second) - np.array(point[:2])
+        self.get_logger().info(f'head_vec: {head_vec}, point_to_first_vec: {point_to_first_vec}, point_to_second_vec: {point_to_second_vec}')
+        
+
+        first_proj = np.dot(point_to_first_vec, head_vec) / np.dot(head_vec, head_vec)
+        sec_proj = np.dot(point_to_second_vec, head_vec) / np.dot(head_vec, head_vec)
+        self.get_logger().info(f'first proj {first_proj} sec_proj {sec_proj}')
+        # if the dot of the vectors is positive then that means they are in the vague same direction
+        # thus we can return the one that is smaller index
+        if location == "start" and first_proj > sec_proj:
+            return first
+        elif location == "start":
+            return second
+        elif location == "end" and first_proj < sec_proj:
+            return first
+        else:
+            return second
+        #     # self.get_logger().info(f'proj: {proj}, point to first : {first_to_sec_vec}, point to sec {first_to_sec_vec}')
+        #     if location == "start":
+        #         return smaller
+        #     if location == "end":
+        #         return smaller
+
+        # # if it is the start, we want to check if it equals the earlier point
+        # if location == "start":
+        #     self.get_logger().info(f"point in start: {point}, traj[smaller]: {traj[smaller]}")
+        #     if point == traj[smaller]:
+        #         return smaller
+        #     else:
+        #         return bigger
             
-        elif location == "end":
-            #self.get_logger().info(f"point in end: {point}, traj[bigger]: {traj[bigger]}")
-            if point == traj[bigger]:
-                self.get_logger().info(f"point in end: {point}, traj[bigger]: {traj[bigger]}")
-                return bigger
-            else: 
-                return smaller
+        # elif location == "end":
+        #     #self.get_logger().info(f"point in end: {point}, traj[bigger]: {traj[bigger]}")
+        #     if point == traj[bigger]:
+        #         self.get_logger().info(f"point in end: {point}, traj[bigger]: {traj[bigger]}")
+        #         return bigger
+        #     else: 
+        #         return smaller
 
     def final_path(self, start_pose, end_pose, map):
         '''
@@ -340,7 +372,7 @@ class PathPlan(Node):
             else:
                 vec = np_points[start_sec_nearest_ix]-np_points[start_nearest_ix]
 
-            a2_ind = len(self.line_traj_real) - start_sec_nearest_ix -1
+            a2_ind = start_next_ix
 
             normal = vec[::-1]/np.linalg.norm(vec)# get unit normal
             normal[0] = normal[0]*-1*offset #make normal opposite direction and extend it by offset, !TODO idk if this is accurate
@@ -348,18 +380,23 @@ class PathPlan(Node):
             #use projects from function to get nearest point to our position on the trajectory line
             close_point = np.array(closest_point(np_points[start_nearest_ix],np_points[start_sec_nearest_ix],start, start_nearest_ix, start_sec_nearest_ix, "start"))
             start_closest = tuple(close_point)
-
-            close_point[0]+=normal[0] # add normal to the close point, !TODO idk if this is correct
+            if end_nearest_ix<start_nearest_ix:
+                close_point[0]+=normal[0] # add normal to the close point, !TODO idk if this is correct
+            else:
+                close_point[0]-=normal[0]
             
             #Use dubins to get u-turn trajectory 
             configs, _ = dubins.shortest_path((self.return_start[0]//self.POOL_SIZE, self.return_start[1]//self.POOL_SIZE, self.return_start[2]), (close_point[0], close_point[1], -self.return_start[2]), self.TURNING_RAD/self.POOL_SIZE/self.RESOLUTION).sample_many(.25 / self.RESOLUTION/self.POOL_SIZE)
            
             #transform path to real world
             path_A = [(*transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE),1) for point in configs]
-            flipped = True
-            np_points = np_points[::-1]
-            start_next_ix = len(self.line_traj_real) - start_next_ix + 1
-            start_nearest_ix = len(self.line_traj_real) - start_nearest_ix - 1
+            if end_nearest_ix<start_nearest_ix:
+                flipped = True
+                np_points = np_points[::-1]
+                start_nearest_ix = len(self.line_traj_real) - start_nearest_ix - 1
+                start_next_ix = start_nearest_ix+1
+                
+                a2_ind = start_next_ix
             #print("PATH A BAKCWARDS", path_A[0:2])
             
             # self.publish_trajectory(path_A)
@@ -369,7 +406,7 @@ class PathPlan(Node):
                 start_nearest_ix = len(self.line_traj_real) - start_nearest_ix - 1
                 self.get_logger().info(f'new start nearest INDEX {start_nearest_ix}')
 
-                start_next_ix = len(self.line_traj_real) - start_next_ix + 1
+                start_next_ix = start_nearest_ix + 1
                 self.get_logger().info(f'new start next INDEX {start_next_ix}')
             a1 = np_points[start_nearest_ix]
             
@@ -397,7 +434,7 @@ class PathPlan(Node):
         if flipped:
             end_nearest_ix = len(self.line_traj_real) - end_nearest_ix - 1
             self.get_logger().info(f'END PRIOR INDEX {end_prior_ix}')
-            end_prior_ix = len(self.line_traj_real) - end_prior_ix - 3 # have to adjust for the fact that we subtracted earlier and we flipped
+            end_prior_ix = end_nearest_ix - 1 # have to adjust for the fact that we subtracted earlier and we flipped
             self.get_logger().info(f'NEW END PRIOR INDEX {end_prior_ix}')
             # start_nearest_ix = len(self.line_traj_real) -start_nearest_ix -1
 
@@ -426,13 +463,13 @@ class PathPlan(Node):
         else:
             traj = [row for row in self.line_traj_real]
 
-        start_index = self.valid_trajectory(start_nearest_ix, a2_ind, traj, start_closest, "start", back = backwards)
-        end_index = self.valid_trajectory(end_nearest_ix, c2_ind, traj, end_closest, "end", back = backwards)
+        start_index = self.valid_trajectory(start_nearest_ix, a2_ind, traj, start_closest, "start", self.start_theta)
+        end_index = self.valid_trajectory(end_nearest_ix, c2_ind, traj, end_closest, "end", self.end_theta)
         self.get_logger().info(f'start_index: {start_index}, end_index: {end_index}')
 
 
-        if traj[start_index : end_index] == [] and start_index <= end_index:
-            final_path = path_A + path_C
+        if traj[start_index : end_index + 1] == [] and start_index <= end_index:
+            final_path = opt_path
 
         else:
             if start_index > end_index:

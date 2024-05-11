@@ -58,6 +58,12 @@ class PathPlan(Node):
                                     {"x": -20.30797004699707, "y": 26.20694923400879}, {"x": -20.441822052001953, "y": 33.974945068359375}, 
                                     {"x": -55.0716438293457, "y": 34.07769775390625}, {"x": -55.30067825317383, "y": 1.4463690519332886}]}
 
+        # self.line_traj = {"points": [{"x": -19.99921417236328, "y": 1.3358267545700073}, {"x": -18.433984756469727, "y": 7.590575218200684}, 
+        #                             {"x": -15.413466453552246, "y": 10.617328643798828}, {"x": -6.186201572418213, "y": 21.114534378051758}, 
+        #                             {"x": -5.5363922119140625, "y": 25.662315368652344}, {"x": -19.717021942138672, "y": 25.677358627319336}, 
+        #                             {"x": -20.30797004699707, "y": 26.20694923400879}, {"x": -20.441822052001953, "y": 33.974945068359375}, 
+        #                             {"x": -55.0716438293457, "y": 34.07769775390625}, {"x":-55.10603332519531,"y":16.070819854736328}, {"x": -55.30067825317383, "y": 1.4463690519332886}]}
+
         self.line_traj_points = []
         self.line_traj_real = []
         for point in self.line_traj["points"]:
@@ -86,6 +92,11 @@ class PathPlan(Node):
             self.map_cb,
             1)
 
+        self.new_map_pub= self.create_publisher(
+            OccupancyGrid,
+            "/new_map",
+            1)
+
         self.goal_sub = self.create_subscription(
             PoseStamped,
             "/goal_pose",
@@ -106,6 +117,8 @@ class PathPlan(Node):
             10
         )
 
+        
+
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
         self.get_logger().info("planner initialized")
 
@@ -124,10 +137,26 @@ class PathPlan(Node):
         # map = erode_map(np.array(msg.data).reshape((rows, cols)), .4/.0504)
         # map = dilate_map(erode_map(np.array(msg.data).reshape((rows, cols)), self.EROSION_SIZE), self.DILATION_SIZE)
         map = erode_map(dilate_map(np.array(msg.data).reshape((rows, cols)), self.DILATION_SIZE), self.EROSION_SIZE)
+        self.get_logger().info(f'map: {map[-40][-3]}')
+        top_new_x, top_new_y, _ = transform_wtm(-40, -2, 0)
+        bot_new_x, bot_new_y, _ = transform_wtm(-38, 2, 0)
+        print("top x", top_new_x, "top y", top_new_y)
+        print("bot x", bot_new_x, "bot y", bot_new_y)
+
+        for x in range(int(bot_new_x), int(top_new_x) + 1):
+            for y in range(int(bot_new_y), int(top_new_y) + 1):
+                map[y][x] = 100
+        new_map_msg = OccupancyGrid()
+        new_map_msg.header = msg.header
+        new_map_msg.info = msg.info
+        new_map_msg.data = map.flatten().astype(np.int8).tolist()
+        self.new_map_pub.publish(new_map_msg)
+
         self.map = block_reduce(map, pool_size, np.max)
 
-        
         self.get_logger().info(f"got map, shape: {self.map.shape}")
+
+    
 
     def pose_cb(self, pose):
         """
@@ -257,9 +286,6 @@ class PathPlan(Node):
 
         # TODO: NEED TO KEEP TRACK OF WHICH SIDE WE ARE COMING FROM
         # currently testing with coming from the right
-        side = "left"
-        if side == "right":
-            np_points[::-1]
 
         # MAKE SURE THAT IF YOU ARE USING CORRECT POOLING SIZE HERE
         np_start = np.array(return_start[:2])
@@ -268,8 +294,10 @@ class PathPlan(Node):
         # get closest
         start_args = np.argpartition(start_distances,1)
         start_nearest_ix = start_args[0]
+        self.get_logger().info(f'START ARGS:{start_args}' )
         start_sec_nearest_ix = start_args[1]
         start_next_ix = start_nearest_ix + 1
+        
 
         # do the same for end
         np_end = np.array(return_end[:2])
@@ -278,6 +306,7 @@ class PathPlan(Node):
         self.get_logger().info(f'END ARGS:{end_args}' )
         end_nearest_ix = end_args[0]
         end_prior_ix = end_nearest_ix - 1
+        
 
         a1 = None
         a2 = None
@@ -293,26 +322,17 @@ class PathPlan(Node):
         end_closest = None
         flipped=False
 
+        if end_nearest_ix < start_nearest_ix and not backwards:
+            self.get_logger().info(f'FLIPPING DEBUG: end_nearest {end_nearest_ix}, start nearest {start_nearest_ix}')
+            flipped = True
+            np_points = np_points[::-1]
+
         if backwards:
             self.get_logger().info('GOING BAKCWARDS')
             # STEP 2 v2: if it is backwards do  dubins (PATH A)
             # dubins should probably be a case in a star, and just set a variable here to True
             #             
             offset = 4 # how far away from the line we want the u-turn to go
-
-                    # trajectory of the line
-            # np_points = np.array(self.line_traj_points)[:,0:2] # get x,y for loaded trajectory points
-
-            # # idk how much you care about it being ints here, but self.return_start is the decimal version
-            # np_start = np.array(start)
-            # distances = np.linalg.norm(np_points - np_start, axis=1)
-
-            # # get closest
-            # args = np.argpartition(distances,1)
-            # nearest_ix = args[0]
-
-
-            #self.get_logger().info(f"closest points: {nearest_ix,sec_nearest_ix}")
 
             #check if this is forward vector
             if start_nearest_ix>start_sec_nearest_ix:
@@ -338,11 +358,19 @@ class PathPlan(Node):
             path_A = [(*transform_mtw(point[0]*self.POOL_SIZE,point[1]*self.POOL_SIZE),1) for point in configs]
             flipped = True
             np_points = np_points[::-1]
+            start_next_ix = len(self.line_traj_real) - start_next_ix + 1
+            start_nearest_ix = len(self.line_traj_real) - start_nearest_ix - 1
             #print("PATH A BAKCWARDS", path_A[0:2])
             
             # self.publish_trajectory(path_A)
 
         else:
+            if flipped:
+                start_nearest_ix = len(self.line_traj_real) - start_nearest_ix - 1
+                self.get_logger().info(f'new start nearest INDEX {start_nearest_ix}')
+
+                start_next_ix = len(self.line_traj_real) - start_next_ix + 1
+                self.get_logger().info(f'new start next INDEX {start_next_ix}')
             a1 = np_points[start_nearest_ix]
             
             # if the start index is at the end, take the prior index instead of next
@@ -363,13 +391,16 @@ class PathPlan(Node):
 
         # STEP 3: finding the closest point on line to the end (PATH C)
         # STEP 4: get the path from closest point to end point
+
+        self.get_logger().info(f'IS IT FLIPPED? {flipped}')
+        
         if flipped:
             end_nearest_ix = len(self.line_traj_real) - end_nearest_ix - 1
             self.get_logger().info(f'END PRIOR INDEX {end_prior_ix}')
             end_prior_ix = len(self.line_traj_real) - end_prior_ix - 3 # have to adjust for the fact that we subtracted earlier and we flipped
             self.get_logger().info(f'NEW END PRIOR INDEX {end_prior_ix}')
-            start_nearest_ix = len(self.line_traj_real) -start_nearest_ix -1
-            
+            # start_nearest_ix = len(self.line_traj_real) -start_nearest_ix -1
+
         c1 = np_points[end_nearest_ix]
 
         # if the end index is at the start, then take the next index instead of prior
@@ -399,9 +430,20 @@ class PathPlan(Node):
         end_index = self.valid_trajectory(end_nearest_ix, c2_ind, traj, end_closest, "end", back = backwards)
         self.get_logger().info(f'start_index: {start_index}, end_index: {end_index}')
 
-        if traj[start_index : end_index + 1] == []:
+
+        if traj[start_index : end_index] == [] and start_index <= end_index:
             final_path = path_A + path_C
+
         else:
+            if start_index > end_index:
+                temp = start_index - 1
+                start_index = end_index + 1
+                end_index = temp
+                self.get_logger().info(f'start_ind {start_index}, end_ind {end_index}')
+                temp_list = traj[start_index : end_index + 1]
+                temp_list.reverse()
+                self.get_logger().info(f'temp_list {temp_list}')
+                path_B = [path_A[-1]] + temp_list + [path_C[0]]
             # path_A -1 should be the closest point on traj to start, path_C 0 should be closest point on traj to end
             # we don't want the ones that are past the places they intersect
 

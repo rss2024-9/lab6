@@ -114,10 +114,7 @@ class AStarNode:
         takes in point getting the possible neighbors within -1 or 1 of the current point
         '''
         x, y = cell
-        all_moves = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1), 
-                    (-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
-        neighbors = [(x + dx, y + dy) for dx, dy in all_moves]
-        #neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if (((dx != 0) or (dy != 0))) ]
+        neighbors = [(x + dx, y + dy) for dx in [-1, 0, 1] for dy in [-1, 0, 1] if (((dx != 0) or (dy != 0))) ]
         valid_neighbors = filter(self.is_valid_cell, neighbors)
         
         return valid_neighbors
